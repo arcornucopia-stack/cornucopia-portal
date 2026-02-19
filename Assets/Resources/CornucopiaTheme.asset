@@ -1,0 +1,46 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 94b824ff61d71b544b22702ab53cb6d6, type: 3}
+  m_Name: CornucopiaTheme
+  m_EditorClassIdentifier: 
+  primaryIndigo: {r: 0.247, g: 0.318, b: 0.71, a: 1}
+  primaryLight: {r: 0.482, g: 0.545, b: 0.835, a: 1}
+  primaryDark: {r: 0.188, g: 0.247, b: 0.624, a: 1}
+  accentGold: {r: 1, g: 0.843, b: 0, a: 1}
+  accentGoldMuted: {r: 0.855, g: 0.647, b: 0.125, a: 1}
+  accentGoldLight: {r: 1, g: 0.922, b: 0.612, a: 1}
+  neutralWhite: {r: 1, g: 1, b: 1, a: 1}
+  neutralLightGrey: {r: 0.961, g: 0.961, b: 0.961, a: 1}
+  neutralMediumGrey: {r: 0.741, g: 0.741, b: 0.741, a: 1}
+  neutralDarkGrey: {r: 0.459, g: 0.459, b: 0.459, a: 1}
+  neutralBlack: {r: 0.129, g: 0.129, b: 0.129, a: 1}
+  semanticSuccess: {r: 0.298, g: 0.686, b: 0.314, a: 1}
+  semanticWarning: {r: 1, g: 0.596, b: 0, a: 1}
+  semanticError: {r: 0.957, g: 0.263, b: 0.212, a: 1}
+  semanticInfo: {r: 0.129, g: 0.588, b: 0.953, a: 1}
+  arOverlay: {r: 0, g: 0, b: 0, a: 0.4}
+  arReticle: {r: 1, g: 1, b: 1, a: 0.8}
+  arPlaneColor: {r: 0.247, g: 0.318, b: 0.71, a: 0.3}
+  primaryFont: {fileID: 0}
+  secondaryFont: {fileID: 0}
+  spacingXS: 4
+  spacingS: 8
+  spacingM: 16
+  spacingL: 24
+  spacingXL: 32
+  spacingXXL: 48
+  radiusSmall: 4
+  radiusMedium: 8
+  radiusLarge: 16
+  radiusRound: 9999
+  shadowColor: {r: 0, g: 0, b: 0, a: 0.15}
+  shadowOffset: {x: 0, y: 2}

@@ -1,0 +1,96 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cornucopia Partner Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">Cornucopia</div>
+      <button class="nav-btn active" data-screen="dashboard">Dashboard</button>
+      <button class="nav-btn" data-screen="uploads">Uploads</button>
+      <button class="nav-btn admin-only" data-screen="approvals">Approvals</button>
+      <button class="nav-btn" id="logoutButton">Sign out</button>
+    </aside>
+
+    <main class="content">
+      <section id="authScreen" class="panel auth-panel">
+        <h1>Business Portal</h1>
+        <p>Upload .glb assets, track engagement, and manage approvals.</p>
+        <div class="auth-form">
+          <input id="emailInput" type="email" placeholder="Email" />
+          <input id="passwordInput" type="password" placeholder="Password" />
+          <button id="loginButton">Sign In</button>
+          <p id="authMessage" class="muted"></p>
+        </div>
+      </section>
+
+      <section id="appScreen" class="hidden">
+        <header class="topbar">
+          <h2 id="welcomeText">Dashboard</h2>
+          <span id="roleBadge" class="badge">role</span>
+        </header>
+
+        <section id="dashboard" class="screen active">
+          <div class="cards">
+            <article class="card">
+              <h3>Total uploads</h3>
+              <p id="totalUploads">0</p>
+            </article>
+            <article class="card">
+              <h3>Approved</h3>
+              <p id="approvedUploads">0</p>
+            </article>
+            <article class="card">
+              <h3>Opens</h3>
+              <p id="openCount">0</p>
+            </article>
+            <article class="card">
+              <h3>Saves</h3>
+              <p id="saveCount">0</p>
+            </article>
+          </div>
+        </section>
+
+        <section id="uploads" class="screen">
+          <div class="upload-box">
+            <h3>Upload .glb model</h3>
+            <input id="businessNameInput" placeholder="Business name" />
+            <input id="glbInput" type="file" accept=".glb" />
+            <button id="uploadButton">Upload For Review</button>
+            <progress id="uploadProgress" value="0" max="100"></progress>
+            <p id="uploadMessage" class="muted"></p>
+          </div>
+
+          <h3>My submissions</h3>
+          <table>
+            <thead>
+              <tr><th>File</th><th>Status</th><th>Date</th></tr>
+            </thead>
+            <tbody id="mySubmissionsBody"></tbody>
+          </table>
+        </section>
+
+        <section id="approvals" class="screen admin-only">
+          <h3>Pending approvals</h3>
+          <table>
+            <thead>
+              <tr><th>Business</th><th>File</th><th>Date</th><th>Actions</th></tr>
+            </thead>
+            <tbody id="pendingBody"></tbody>
+          </table>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <script src="./firebase-config.js"></script>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

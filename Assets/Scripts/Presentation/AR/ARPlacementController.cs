@@ -1,0 +1,183 @@
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using Siccity.GLTFUtility;
+using UnityEngine;
+using UnityEngine.XR.ARFoundation;
+using UnityEngine.XR.ARSubsystems;
+using Cornucopia.Core.Interfaces;
+using Cornucopia.Core.Models;
+using Cornucopia.Data.Cache;
+
+namespace Cornucopia.Presentation.AR
+{
+    /// <summary>
+    /// Manages AR object placement. Refactored from PlaceObjectsOnPlane.cs with cleaner architecture.
+    /// Loads a GLB model via IModelCacheService, places it on detected AR planes via touch.
+    /// </summary>
+    [RequireComponent(typeof(ARRaycastManager))]
+    public class ARPlacementController : MonoBehaviour
+    {
+        [SerializeField] private GameObject placementReticle;
+        [SerializeField] private GameObject uiOverlay;
+        [SerializeField] private GameObject progressBarObj;
+        [SerializeField] private ProgressBarCircle progressBar;
+        [SerializeField] private int maxObjects = 1;
+        [SerializeField] private bool canReposition = true;
+
+        public event Action<GameObject, ProductModel> OnProductPlaced;
+        public event Action<GameObject, ProductModel> OnProductTapped;
+
+        private ARRaycastManager _raycastManager;
+        private static readonly List<ARRaycastHit> _hits = new List<ARRaycastHit>();
+
+        private GameObject _spawnedObject;
+        private int _placedCount;
+        private ProductModel _currentProduct;
+        private bool _modelReady;
+        private IModelCacheService _cacheService;
+
+        public GameObject SpawnedObject => _spawnedObject;
+        public ProductModel CurrentProduct => _currentProduct;
+
+        private void Awake()
+        {
+            _raycastManager = GetComponent<ARRaycastManager>();
+            _cacheService = new LocalModelCacheService();
+
+            if (uiOverlay != null) uiOverlay.SetActive(false);
+            if (progressBarObj != null) progressBarObj.SetActive(false);
+            if (placementReticle != null) placementReticle.SetActive(false);
+        }
+
+        /// <summary>
+        /// Call this to load a product model for AR placement.
+        /// </summary>
+        public async void LoadProduct(ProductModel product)
+        {
+            _currentProduct = product;
+            _modelReady = false;
+            _placedCount = 0;
+
+            if (_spawnedObject != null)
+            {
+                Destroy(_spawnedObject);
+                _spawnedObject = null;
+            }
+
+            if (progressBarObj != null) progressBarObj.SetActive(true);
+            if (uiOverlay != null) uiOverlay.SetActive(false);
+
+            try
+            {
+                string modelFileName = !string.IsNullOrEmpty(product.modelUrl)
+                    ? product.modelUrl
+                    : product.name;
+
+                string localPath = await _cacheService.DownloadAndCache(modelFileName);
+                LoadGLBModel(localPath);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[ARPlacement] Failed to load model: {e.Message}");
+                if (progressBarObj != null) progressBarObj.SetActive(false);
+            }
+        }
+
+        /// <summary>
+        /// Legacy entry point — loads by model name string (backward compatible with PlayerPrefs flow).
+        /// </summary>
+        public async void LoadModelByName(string modelName, string productName = null)
+        {
+            var product = new ProductModel
+            {
+                name = productName ?? modelName,
+                modelUrl = modelName
+            };
+            LoadProduct(product);
+        }
+
+        private void LoadGLBModel(string path)
+        {
+            AnimationClip[] animClips;
+            GameObject model = Importer.LoadFromFile(path, new ImportSettings(), out animClips);
+
+            if (model == null)
+            {
+                Debug.LogError($"[ARPlacement] Failed to import GLB from {path}");
+                return;
+            }
+
+            if (placementReticle != null)
+            {
+                model.transform.SetParent(placementReticle.transform);
+                model.transform.localPosition = Vector3.zero;
+                model.transform.localRotation = Quaternion.identity;
+            }
+
+            _modelReady = true;
+            if (progressBarObj != null) progressBarObj.SetActive(false);
+            if (uiOverlay != null) uiOverlay.SetActive(true);
+
+            Debug.Log($"[ARPlacement] Model loaded: {model.name}");
+        }
+
+        private void Update()
+        {
+            if (!_modelReady) return;
+            if (Input.touchCount == 0) return;
+
+            Touch touch = Input.GetTouch(0);
+            if (touch.phase != TouchPhase.Began) return;
+
+            // Don't place if touching UI
+            if (UnityEngine.EventSystems.EventSystem.current != null &&
+                UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject(touch.fingerId))
+                return;
+
+            if (!_raycastManager.Raycast(touch.position, _hits, TrackableType.PlaneWithinPolygon))
+                return;
+
+            Pose hitPose = _hits[0].pose;
+
+            if (_placedCount < maxObjects)
+            {
+                PlaceObject(hitPose);
+            }
+            else if (canReposition && _spawnedObject != null)
+            {
+                _spawnedObject.transform.SetPositionAndRotation(hitPose.position, hitPose.rotation);
+            }
+        }
+
+        private void PlaceObject(Pose pose)
+        {
+            if (placementReticle != null)
+            {
+                placementReticle.SetActive(true);
+                _spawnedObject = Instantiate(placementReticle, pose.position, pose.rotation);
+                placementReticle.SetActive(false);
+            }
+
+            _placedCount++;
+            if (uiOverlay != null) uiOverlay.SetActive(false);
+
+            OnProductPlaced?.Invoke(_spawnedObject, _currentProduct);
+            Debug.Log($"[ARPlacement] Object placed at {pose.position}");
+        }
+
+        /// <summary>
+        /// Removes the placed object so a new one can be placed.
+        /// </summary>
+        public void ClearPlacement()
+        {
+            if (_spawnedObject != null)
+            {
+                Destroy(_spawnedObject);
+                _spawnedObject = null;
+            }
+            _placedCount = 0;
+            if (uiOverlay != null) uiOverlay.SetActive(true);
+        }
+    }
+}

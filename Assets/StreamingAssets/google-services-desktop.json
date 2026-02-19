@@ -1,0 +1,40 @@
+{
+  "project_info": {
+    "project_number": "773625396298",
+    "firebase_url": "https://cornucopia-54b02-default-rtdb.firebaseio.com",
+    "project_id": "cornucopia-54b02",
+    "storage_bucket": "cornucopia-54b02.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:773625396298:android:f3d1344c7baa2c6b917ab3",
+        "android_client_info": {
+          "package_name": "com.AR.Cornucopia"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "773625396298-rv6mj2ad4qkkqnn24l1hbtcrbqvgldtr.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBGoPKV1tyXJ9DEExiP82C_cm72Su3Fu_s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "773625396298-rv6mj2ad4qkkqnn24l1hbtcrbqvgldtr.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

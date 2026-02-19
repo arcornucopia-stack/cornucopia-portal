@@ -1,0 +1,19 @@
+﻿rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    match /partner_uploads/{businessId}/{submissionId}/{fileName} {
+      allow read: if signedIn();
+      allow write: if signedIn()
+        && request.resource.size < 25 * 1024 * 1024
+        && fileName.matches('.*\\.glb$');
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
