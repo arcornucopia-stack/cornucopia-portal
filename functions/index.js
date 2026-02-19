@@ -1,6 +1,7 @@
 ﻿/**
  * Optional Cloud Functions template.
  * Use callable functions so client cannot self-approve uploads.
+ * (Realtime Database version)
  */
 
 const functions = require("firebase-functions");
@@ -14,8 +15,10 @@ exports.approveSubmission = functions.https.onCall(async (data, context) => {
   }
 
   const uid = context.auth.uid;
-  const userDoc = await admin.firestore().collection("users").doc(uid).get();
-  if (!userDoc.exists || userDoc.data().role !== "admin") {
+  const userSnap = await admin.database().ref(`users/${uid}`).once("value");
+  const user = userSnap.val();
+
+  if (!user || user.role !== "admin") {
     throw new functions.https.HttpsError("permission-denied", "Admin role required");
   }
 
@@ -24,10 +27,11 @@ exports.approveSubmission = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError("invalid-argument", "submissionId is required");
   }
 
-  await admin.firestore().collection("submissions").doc(submissionId).update({
+  await admin.database().ref(`submissions/${submissionId}`).update({
     status: "approved",
     decisionBy: uid,
-    approvedAt: admin.firestore.FieldValue.serverTimestamp()
+    approvedAt: Date.now(),
+    rejectedAt: null
   });
 
   return { ok: true };

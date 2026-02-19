@@ -7,16 +7,15 @@ This portal lets subscribing business partners upload `.glb` files for approval 
 - Partner upload queue (`pending/approved/rejected`)
 - Admin queue to approve/reject submissions
 - Basic analytics cards: opens and saves
-- Firebase security rules templates
-- Optional Cloud Function template for approval workflow
+- Firebase Realtime Database rules template
+- Firebase Storage rules template
 
-## Suggested architecture
+## Suggested architecture (Datastore-mode compatible)
 - Auth: Firebase Authentication (email/password)
-- Data: Firestore
+- Data: Realtime Database
 - Files: Firebase Storage
-- Optional server logic: Firebase Functions
 
-### Firestore collections
+## Realtime Database paths
 - `users/{uid}`
   - `role`: `admin | partner`
   - `businessId`: string
@@ -34,8 +33,8 @@ This portal lets subscribing business partners upload `.glb` files for approval 
 1. Create a Firebase web app in your existing project.
 2. Copy `firebase-config.example.js` to `firebase-config.js`.
 3. Paste your Firebase config into `firebase-config.js`.
-4. In Firebase console, create `users/{uid}` docs with proper roles.
-5. Apply `firestore.rules` and `storage.rules`.
+4. In Realtime Database, create `users/{uid}` nodes with roles.
+5. Apply `database.rules.json` and `storage.rules`.
 6. Open `index.html` with a local server.
 
 Example local server:
@@ -50,4 +49,3 @@ Then open `http://localhost:5173`.
 ## Unity integration notes
 - Keep Unity app reading only `approved` submissions.
 - Track customer analytics by writing to `events` when users open/save a model.
-- For strict approval security, use Cloud Functions (template provided in `functions/index.js`).
