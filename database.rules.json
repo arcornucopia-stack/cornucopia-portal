@@ -5,10 +5,17 @@
 
     "cornucopia": {
       "users": {
-        ".read": "auth != null && root.child('cornucopia/users').child(auth.uid).child('role').val() === 'admin'",
+        ".read": "auth != null",
         "$uid": {
-          ".read": "auth != null && (auth.uid === $uid || root.child('cornucopia/users').child(auth.uid).child('role').val() === 'admin')",
+          ".read": "auth != null",
           ".write": "auth != null && (auth.uid === $uid || root.child('cornucopia/users').child(auth.uid).child('role').val() === 'admin')"
+          ,
+          "models": {
+            "$modelId": {
+              ".read": "auth != null",
+              ".write": "auth != null && (root.child('cornucopia/users').child(auth.uid).child('role').val() === 'admin' || root.child('cornucopia/users').child(auth.uid).child('role').val() === 'partner')"
+            }
+          }
         }
       },
 

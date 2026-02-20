@@ -64,6 +64,11 @@ const dispatchUsersList = byId("dispatchUsersList");
 const refreshDispatchDataButton = byId("refreshDispatchDataButton");
 const sendModelToUsersButton = byId("sendModelToUsersButton");
 const dispatchMessage = byId("dispatchMessage");
+const partnerApprovedModelSelect = byId("partnerApprovedModelSelect");
+const partnerDeliveryUsersList = byId("partnerDeliveryUsersList");
+const refreshPartnerDeliveryButton = byId("refreshPartnerDeliveryButton");
+const sendPartnerModelButton = byId("sendPartnerModelButton");
+const partnerDeliveryMessage = byId("partnerDeliveryMessage");
 const partnerSelectForSubscribers = byId("partnerSelectForSubscribers");
 const availableUsersForPartnerList = byId("availableUsersForPartnerList");
 const refreshPartnerSubscribersButton = byId("refreshPartnerSubscribersButton");
@@ -95,6 +100,8 @@ logoutButton.addEventListener("click", () => signOut(auth));
 uploadButton.addEventListener("click", uploadModel);
 refreshDispatchDataButton?.addEventListener("click", loadDispatchData);
 sendModelToUsersButton?.addEventListener("click", sendModelToSelectedUsers);
+refreshPartnerDeliveryButton?.addEventListener("click", loadPartnerDeliveryData);
+sendPartnerModelButton?.addEventListener("click", sendApprovedPartnerModelToUsers);
 refreshPartnerSubscribersButton?.addEventListener("click", loadPartnerSubscriptionAdminData);
 savePartnerSubscribersButton?.addEventListener("click", savePartnerSubscribersMapping);
 partnerSelectForSubscribers?.addEventListener("change", syncPartnerSubscribersSelection);
@@ -140,7 +147,8 @@ async function refreshAll() {
     loadPublishedModels(),
     loadDispatchData(),
     loadPartnerSubscriptionAdminData(),
-    loadPartnerSubscribersForUpload()
+    loadPartnerSubscribersForUpload(),
+    loadPartnerDeliveryData()
   ]);
 }
 
@@ -344,6 +352,32 @@ async function updateSubmissionStatus(id, status) {
     approvedAt: status === "approved" ? Date.now() : null,
     rejectedAt: status === "rejected" ? Date.now() : null
   });
+
+  if (status === "approved") {
+    await ensureModelRecordFromSubmission(id);
+  }
+}
+
+async function ensureModelRecordFromSubmission(submissionId) {
+  const submissionSnap = await get(dbRef(db, `${ROOT}/submissions/${submissionId}`));
+  if (!submissionSnap.exists()) return;
+
+  const item = submissionSnap.val();
+  const modelKey = item.modelKey || sanitizeKey(stripGlbExtension(item.fileName || `model_${submissionId}`));
+  const modelRef = dbRef(db, `${ROOT}/models/${modelKey}`);
+  const modelSnap = await get(modelRef);
+  if (modelSnap.exists()) return;
+
+  await set(modelRef, {
+    name: item.displayName || stripGlbExtension(item.fileName || modelKey),
+    modelNamee: modelKey,
+    picPathh: item.picPathh || modelKey,
+    question: item.question || "Would you like this product?",
+    storagePath: item.storagePath || "",
+    data: { sent: 0, saved: 0, yes: 0, no: 0, rating: "0.0" }
+  });
+
+  await update(dbRef(db, `${ROOT}/submissions/${submissionId}`), { modelKey });
 }
 
 async function pushSubmissionToApp(submissionId, options = {}) {
@@ -684,6 +718,82 @@ async function savePartnerSubscribersMapping() {
   }
 }
 
+async function loadPartnerDeliveryData() {
+  if (!currentProfile || (currentProfile.role || "").toLowerCase() === "admin") return;
+  partnerDeliveryMessage.textContent = "";
+
+  try {
+    const [submissionsSnap, usersSnap] = await Promise.all([
+      get(dbRef(db, `${ROOT}/submissions`)),
+      get(dbRef(db, `${ROOT}/users`))
+    ]);
+
+    const submissions = submissionsSnap.exists() ? submissionsSnap.val() : {};
+    const users = usersSnap.exists() ? usersSnap.val() : {};
+    const businessId = currentProfile.businessId || currentUser.uid;
+
+    const approved = Object.values(submissions)
+      .filter((s) => s && s.businessId === businessId && s.status === "approved" && s.modelKey)
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+    partnerApprovedModelSelect.innerHTML = "<option value=\"\">Select approved model...</option>";
+    const seen = new Set();
+    approved.forEach((s) => {
+      if (seen.has(s.modelKey)) return;
+      seen.add(s.modelKey);
+      const opt = document.createElement("option");
+      opt.value = s.modelKey;
+      opt.textContent = `${s.displayName || s.fileName || s.modelKey} (${s.modelKey})`;
+      partnerApprovedModelSelect.appendChild(opt);
+    });
+
+    partnerDeliveryUsersList.innerHTML = "";
+    Object.entries(users).forEach(([uid, value]) => {
+      const role = String(value?.role || "").toLowerCase();
+      if (role === "admin" || role === "partner") return;
+      const row = document.createElement("label");
+      row.className = "user-row";
+      row.innerHTML = `<input type="checkbox" value="${uid}" /> <span>${escapeHtml(value?.name || value?.email || value?.businessName || uid)} <small>(${escapeHtml(uid)})</small></span>`;
+      partnerDeliveryUsersList.appendChild(row);
+    });
+
+    if (!partnerDeliveryUsersList.children.length) {
+      partnerDeliveryUsersList.innerHTML = "<div class='muted'>No users available yet.</div>";
+    }
+  } catch (err) {
+    partnerDeliveryMessage.textContent = `Could not load partner delivery data: ${err.message || err}`;
+  }
+}
+
+async function sendApprovedPartnerModelToUsers() {
+  if (!currentProfile || (currentProfile.role || "").toLowerCase() === "admin") return;
+  const modelKey = partnerApprovedModelSelect.value;
+  if (!modelKey) {
+    partnerDeliveryMessage.textContent = "Select an approved model first.";
+    return;
+  }
+
+  const selected = [...partnerDeliveryUsersList.querySelectorAll("input[type='checkbox']:checked")].map((x) => x.value);
+  if (!selected.length) {
+    partnerDeliveryMessage.textContent = "Select at least one user.";
+    return;
+  }
+
+  let assigned = 0;
+  try {
+    for (const uid of selected) {
+      const userModelRef = dbRef(db, `${ROOT}/users/${uid}/models/${modelKey}`);
+      const existing = await get(userModelRef);
+      if (existing.exists()) continue;
+      await set(userModelRef, { MName: modelKey, saved: false, Rating: "0.0", answer: "pending" });
+      assigned += 1;
+    }
+    partnerDeliveryMessage.textContent = `Sent model to ${assigned} users.`;
+  } catch (err) {
+    partnerDeliveryMessage.textContent = `Send failed: ${err.message || err}`;
+  }
+}
+
 async function getAllSubmissions() {
   const snap = await get(dbRef(db, `${ROOT}/submissions`));
   const raw = snap.exists() ? snap.val() : {};
@@ -779,6 +889,7 @@ function setUploadUIForRole(isAdmin) {
     targetModeInput.value = "specific_users";
     targetModeInput.style.display = "none";
     targetUserIdsInput.style.display = "none";
+    partnerDeliveryMessage.textContent = "";
     uploadMessage.textContent = "Partner uploads require admin approval before push.";
   }
 }

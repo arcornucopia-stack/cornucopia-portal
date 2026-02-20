@@ -87,6 +87,21 @@
             <tbody id="mySubmissionsBody"></tbody>
           </table>
 
+          <div class="partner-only">
+            <h3>Send Approved Models To Users</h3>
+            <div class="upload-box">
+              <select id="partnerApprovedModelSelect">
+                <option value="">Select approved model...</option>
+              </select>
+              <div id="partnerDeliveryUsersList" class="users-list"></div>
+              <div class="row-actions">
+                <button id="refreshPartnerDeliveryButton" class="secondary" type="button">Refresh Models/Users</button>
+                <button id="sendPartnerModelButton" class="success" type="button">Send Model To Selected Users</button>
+              </div>
+              <p id="partnerDeliveryMessage" class="muted"></p>
+            </div>
+          </div>
+
           <div class="admin-only">
             <h3>Published models (App live list)</h3>
             <table>
