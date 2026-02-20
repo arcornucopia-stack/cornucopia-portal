@@ -92,6 +92,21 @@
               <tbody id="publishedModelsBody"></tbody>
             </table>
           </div>
+
+          <div class="admin-only">
+            <h3>Send Existing Model To Users</h3>
+            <div class="upload-box">
+              <select id="dispatchModelSelect">
+                <option value="">Select model...</option>
+              </select>
+              <div id="dispatchUsersList" class="users-list"></div>
+              <div class="row-actions">
+                <button id="refreshDispatchDataButton" class="secondary" type="button">Refresh Users/Models</button>
+                <button id="sendModelToUsersButton" class="success" type="button">Send To Selected Users</button>
+              </div>
+              <p id="dispatchMessage" class="muted"></p>
+            </div>
+          </div>
         </section>
 
         <section id="approvals" class="screen admin-only">

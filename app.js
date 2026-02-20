@@ -57,6 +57,11 @@ const mySubmissionsTitle = byId("mySubmissionsTitle");
 const mySubmissionsBody = byId("mySubmissionsBody");
 const pendingBody = byId("pendingBody");
 const publishedModelsBody = byId("publishedModelsBody");
+const dispatchModelSelect = byId("dispatchModelSelect");
+const dispatchUsersList = byId("dispatchUsersList");
+const refreshDispatchDataButton = byId("refreshDispatchDataButton");
+const sendModelToUsersButton = byId("sendModelToUsersButton");
+const dispatchMessage = byId("dispatchMessage");
 
 const totalUploads = byId("totalUploads");
 const approvedUploads = byId("approvedUploads");
@@ -81,6 +86,8 @@ loginButton.addEventListener("click", async () => {
 
 logoutButton.addEventListener("click", () => signOut(auth));
 uploadButton.addEventListener("click", uploadModel);
+refreshDispatchDataButton?.addEventListener("click", loadDispatchData);
+sendModelToUsersButton?.addEventListener("click", sendModelToSelectedUsers);
 
 targetModeInput.addEventListener("change", () => {
   targetUserIdsInput.style.display = targetModeInput.value === "specific_users" ? "block" : "none";
@@ -116,11 +123,12 @@ onAuthStateChanged(auth, async (user) => {
 });
 
 async function refreshAll() {
-  await Promise.all([
+  await Promise.allSettled([
     loadMySubmissions(),
     loadApprovalQueue(),
     loadAnalytics(),
-    loadPublishedModels()
+    loadPublishedModels(),
+    loadDispatchData()
   ]);
 }
 
@@ -229,77 +237,83 @@ async function uploadModel() {
 async function loadMySubmissions() {
   mySubmissionsBody.innerHTML = "";
   if (!currentUser || !currentProfile) return;
+  try {
+    const all = await getAllSubmissions();
+    const businessId = currentProfile.businessId || currentUser.uid;
+    const rows = currentProfile.role === "admin"
+      ? all
+      : all.filter((x) => x.businessId === businessId);
 
-  const all = await getAllSubmissions();
-  const businessId = currentProfile.businessId || currentUser.uid;
-  const rows = currentProfile.role === "admin"
-    ? all
-    : all.filter((x) => x.businessId === businessId);
+    rows.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
-  rows.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    let approved = 0;
+    rows.forEach((item) => {
+      if (item.status === "approved") approved += 1;
 
-  let approved = 0;
-  rows.forEach((item) => {
-    if (item.status === "approved") approved += 1;
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${escapeHtml(item.fileName || "-")}</td>
+        <td>${escapeHtml(targetLabel(item))}</td>
+        <td><span class="status-pill status-${item.status || "pending"}">${escapeHtml(statusLabel(item))}</span></td>
+        <td>${formatTs(item.createdAt)}</td>
+      `;
+      mySubmissionsBody.appendChild(tr);
+    });
 
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${escapeHtml(item.fileName || "-")}</td>
-      <td>${escapeHtml(targetLabel(item))}</td>
-      <td><span class="status-pill status-${item.status || "pending"}">${escapeHtml(statusLabel(item))}</span></td>
-      <td>${formatTs(item.createdAt)}</td>
-    `;
-    mySubmissionsBody.appendChild(tr);
-  });
-
-  totalUploads.textContent = String(rows.length);
-  approvedUploads.textContent = String(approved);
+    totalUploads.textContent = String(rows.length);
+    approvedUploads.textContent = String(approved);
+  } catch (err) {
+    uploadMessage.textContent = `Could not load submissions: ${err.message || err}`;
+  }
 }
 
 async function loadApprovalQueue() {
   pendingBody.innerHTML = "";
   if (!currentProfile || currentProfile.role !== "admin") return;
+  try {
+    const all = await getAllSubmissions();
+    all.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
-  const all = await getAllSubmissions();
-  all.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    all.forEach((item) => {
+      const canPush = item.status !== "rejected" && !item.pushedToApp;
 
-  all.forEach((item) => {
-    const canPush = item.status !== "rejected" && !item.pushedToApp;
-
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${escapeHtml(item.businessName || item.businessId || "-")}</td>
-      <td>${escapeHtml(item.fileName || "-")}</td>
-      <td>${escapeHtml(targetLabel(item))}</td>
-      <td><span class="status-pill status-${item.status || "pending"}">${escapeHtml(statusLabel(item))}</span></td>
-      <td>${formatTs(item.createdAt)}</td>
-      <td>
-        <div class="row-actions">
-          <button class="secondary" data-id="${item.id}" data-action="approve">Approve</button>
-          <button class="danger" data-id="${item.id}" data-action="reject">Reject</button>
-          ${canPush ? `<button class="success" data-id="${item.id}" data-action="push">Push to App</button>` : ""}
-        </div>
-      </td>
-    `;
-    pendingBody.appendChild(tr);
-  });
-
-  pendingBody.querySelectorAll("button[data-id]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const id = btn.getAttribute("data-id");
-      const action = btn.getAttribute("data-action");
-
-      if (action === "approve") {
-        await updateSubmissionStatus(id, "approved");
-      } else if (action === "reject") {
-        await updateSubmissionStatus(id, "rejected");
-      } else if (action === "push") {
-        await pushSubmissionToApp(id);
-      }
-
-      await refreshAll();
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${escapeHtml(item.businessName || item.businessId || "-")}</td>
+        <td>${escapeHtml(item.fileName || "-")}</td>
+        <td>${escapeHtml(targetLabel(item))}</td>
+        <td><span class="status-pill status-${item.status || "pending"}">${escapeHtml(statusLabel(item))}</span></td>
+        <td>${formatTs(item.createdAt)}</td>
+        <td>
+          <div class="row-actions">
+            <button class="secondary" data-id="${item.id}" data-action="approve">Approve</button>
+            <button class="danger" data-id="${item.id}" data-action="reject">Reject</button>
+            ${canPush ? `<button class="success" data-id="${item.id}" data-action="push">Push to App</button>` : ""}
+          </div>
+        </td>
+      `;
+      pendingBody.appendChild(tr);
     });
-  });
+
+    pendingBody.querySelectorAll("button[data-id]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const id = btn.getAttribute("data-id");
+        const action = btn.getAttribute("data-action");
+
+        if (action === "approve") {
+          await updateSubmissionStatus(id, "approved");
+        } else if (action === "reject") {
+          await updateSubmissionStatus(id, "rejected");
+        } else if (action === "push") {
+          await pushSubmissionToApp(id);
+        }
+
+        await refreshAll();
+      });
+    });
+  } catch (err) {
+    uploadMessage.textContent = `Could not load approval queue: ${err.message || err}`;
+  }
 }
 
 async function updateSubmissionStatus(id, status) {
@@ -397,42 +411,128 @@ async function pushSubmissionToApp(submissionId, options = {}) {
 
 async function loadAnalytics() {
   if (!currentProfile || !currentUser) return;
+  try {
+    const businessId = currentProfile.businessId || currentUser.uid;
+    const snap = await get(dbRef(db, `${ROOT}/events`));
+    const raw = snap.exists() ? snap.val() : {};
 
-  const businessId = currentProfile.businessId || currentUser.uid;
-  const snap = await get(dbRef(db, `${ROOT}/events`));
-  const raw = snap.exists() ? snap.val() : {};
+    let opens = 0;
+    let saves = 0;
 
-  let opens = 0;
-  let saves = 0;
+    Object.values(raw).forEach((event) => {
+      if (!event || event.businessId !== businessId) return;
+      if (event.eventType === "open") opens += 1;
+      if (event.eventType === "save") saves += 1;
+    });
 
-  Object.values(raw).forEach((event) => {
-    if (!event || event.businessId !== businessId) return;
-    if (event.eventType === "open") opens += 1;
-    if (event.eventType === "save") saves += 1;
-  });
-
-  openCount.textContent = String(opens);
-  saveCount.textContent = String(saves);
+    openCount.textContent = String(opens);
+    saveCount.textContent = String(saves);
+  } catch {
+    openCount.textContent = "0";
+    saveCount.textContent = "0";
+  }
 }
 
 async function loadPublishedModels() {
   publishedModelsBody.innerHTML = "";
   if (!currentProfile || (currentProfile.role || "").toLowerCase() !== "admin") return;
+  try {
+    const snap = await get(dbRef(db, `${ROOT}/models`));
+    const raw = snap.exists() ? snap.val() : {};
+    const models = Object.entries(raw).map(([id, value]) => ({ id, ...value }));
+    models.sort((a, b) => String(a.id).localeCompare(String(b.id)));
 
-  const snap = await get(dbRef(db, `${ROOT}/models`));
-  const raw = snap.exists() ? snap.val() : {};
-  const models = Object.entries(raw).map(([id, value]) => ({ id, ...value }));
-  models.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    models.forEach((m) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${escapeHtml(m.id || "-")}</td>
+        <td>${escapeHtml(m.name || "-")}</td>
+        <td>${escapeHtml(m.question || "-")}</td>
+      `;
+      publishedModelsBody.appendChild(tr);
+    });
+  } catch (err) {
+    dispatchMessage.textContent = `Could not read models list: ${err.message || err}`;
+  }
+}
 
-  models.forEach((m) => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${escapeHtml(m.id || "-")}</td>
-      <td>${escapeHtml(m.name || "-")}</td>
-      <td>${escapeHtml(m.question || "-")}</td>
-    `;
-    publishedModelsBody.appendChild(tr);
-  });
+async function loadDispatchData() {
+  if (!currentProfile || (currentProfile.role || "").toLowerCase() !== "admin") return;
+  dispatchMessage.textContent = "";
+
+  try {
+    const [modelsSnap, usersSnap] = await Promise.all([
+      get(dbRef(db, `${ROOT}/models`)),
+      get(dbRef(db, `${ROOT}/users`))
+    ]);
+
+    const models = modelsSnap.exists() ? modelsSnap.val() : {};
+    const users = usersSnap.exists() ? usersSnap.val() : {};
+
+    dispatchModelSelect.innerHTML = "<option value=\"\">Select model...</option>";
+    Object.keys(models).sort().forEach((modelKey) => {
+      const opt = document.createElement("option");
+      opt.value = modelKey;
+      opt.textContent = `${modelKey} (${models[modelKey]?.name || "no name"})`;
+      dispatchModelSelect.appendChild(opt);
+    });
+
+    dispatchUsersList.innerHTML = "";
+    Object.entries(users).forEach(([uid, value]) => {
+      const role = String(value?.role || "").toLowerCase();
+      if (role === "admin" || role === "partner") return;
+
+      const name = value?.name || value?.businessName || uid;
+      const row = document.createElement("label");
+      row.className = "user-row";
+      row.innerHTML = `<input type="checkbox" value="${uid}" /> <span>${escapeHtml(name)} <small>(${escapeHtml(uid)})</small></span>`;
+      dispatchUsersList.appendChild(row);
+    });
+
+    if (!dispatchUsersList.children.length) {
+      dispatchUsersList.innerHTML = "<div class='muted'>No end-users found (non-admin/non-partner).</div>";
+    }
+  } catch (err) {
+    dispatchMessage.textContent = `Could not load users/models for delivery: ${err.message || err}`;
+  }
+}
+
+async function sendModelToSelectedUsers() {
+  if (!currentProfile || (currentProfile.role || "").toLowerCase() !== "admin") return;
+
+  const modelKey = dispatchModelSelect.value;
+  if (!modelKey) {
+    dispatchMessage.textContent = "Select a model first.";
+    return;
+  }
+
+  const checked = [...dispatchUsersList.querySelectorAll("input[type='checkbox']:checked")];
+  if (!checked.length) {
+    dispatchMessage.textContent = "Select at least one user.";
+    return;
+  }
+
+  let assigned = 0;
+  try {
+    for (const node of checked) {
+      const uid = node.value;
+      const userModelRef = dbRef(db, `${ROOT}/users/${uid}/models/${modelKey}`);
+      const existing = await get(userModelRef);
+      if (existing.exists()) continue;
+
+      await set(userModelRef, {
+        MName: modelKey,
+        saved: false,
+        Rating: "0.0",
+        answer: "pending"
+      });
+      assigned += 1;
+    }
+    dispatchMessage.textContent = `Model sent to ${assigned} selected users.`;
+    await refreshAll();
+  } catch (err) {
+    dispatchMessage.textContent = `Send failed: ${err.message || err}`;
+  }
 }
 
 async function getAllSubmissions() {

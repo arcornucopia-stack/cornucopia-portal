@@ -142,6 +142,22 @@ tr:last-child td { border-bottom: none; }
 .row-actions .danger { background: #b91c1c; color: #fff; }
 .row-actions .success { background: #15803d; color: #fff; }
 .admin-only h3 { margin-top: 16px; }
+.users-list {
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  padding: 8px;
+}
+.user-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  border-bottom: 1px solid #eef4f1;
+}
+.user-row:last-child { border-bottom: none; }
 @media (max-width: 900px) {
   .shell { grid-template-columns: 1fr; }
   .sidebar { display: flex; gap: 8px; overflow-x: auto; }
