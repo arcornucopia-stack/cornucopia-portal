@@ -20,6 +20,8 @@ import {
   uploadBytesResumable
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-storage.js";
 
+const ROOT = "cornucopia";
+
 const config = window.CORNUCOPIA_FIREBASE_CONFIG;
 if (!config || !config.projectId) {
   alert("Missing Firebase config. Create web-portal/firebase-config.js first.");
@@ -41,6 +43,10 @@ const authMessage = byId("authMessage");
 const roleBadge = byId("roleBadge");
 
 const businessNameInput = byId("businessNameInput");
+const displayNameInput = byId("displayNameInput");
+const questionInput = byId("questionInput");
+const targetModeInput = byId("targetModeInput");
+const targetUserIdsInput = byId("targetUserIdsInput");
 const glbInput = byId("glbInput");
 const uploadButton = byId("uploadButton");
 const uploadProgress = byId("uploadProgress");
@@ -63,6 +69,7 @@ loginButton.addEventListener("click", async () => {
   authMessage.textContent = "Signing in...";
   try {
     await signInWithEmailAndPassword(auth, emailInput.value.trim(), passwordInput.value);
+    authMessage.textContent = "";
   } catch (err) {
     authMessage.textContent = err.message;
   }
@@ -70,6 +77,11 @@ loginButton.addEventListener("click", async () => {
 
 logoutButton.addEventListener("click", () => signOut(auth));
 uploadButton.addEventListener("click", uploadModel);
+
+targetModeInput.addEventListener("change", () => {
+  targetUserIdsInput.style.display = targetModeInput.value === "specific_users" ? "block" : "none";
+});
+targetModeInput.dispatchEvent(new Event("change"));
 
 onAuthStateChanged(auth, async (user) => {
   currentUser = user;
@@ -81,9 +93,9 @@ onAuthStateChanged(auth, async (user) => {
     return;
   }
 
-  const profileSnap = await get(child(dbRef(db), `cornucopia/users/${user.uid}`));
+  const profileSnap = await get(child(dbRef(db), `${ROOT}/users/${user.uid}`));
   if (!profileSnap.exists()) {
-    authMessage.textContent = "No user role found. Create cornucopia/users/{uid} in Realtime Database.";
+    authMessage.textContent = `No user role found. Create ${ROOT}/users/{uid} in Realtime Database.`;
     await signOut(auth);
     return;
   }
@@ -100,7 +112,7 @@ onAuthStateChanged(auth, async (user) => {
 async function refreshAll() {
   await Promise.all([
     loadMySubmissions(),
-    loadPendingApprovals(),
+    loadApprovalQueue(),
     loadAnalytics()
   ]);
 }
@@ -110,7 +122,7 @@ async function uploadModel() {
 
   const file = glbInput.files?.[0];
   if (!file) {
-    uploadMessage.textContent = "Choose a .glb file first.";
+    uploadMessage.textContent = "Please choose a .glb file before uploading.";
     return;
   }
 
@@ -126,10 +138,19 @@ async function uploadModel() {
     return;
   }
 
+  const targetMode = targetModeInput.value;
+  const targetUserIds = parseTargetUserIds(targetUserIdsInput.value);
+  if (targetMode === "specific_users" && targetUserIds.length === 0) {
+    uploadMessage.textContent = "Specific users mode requires at least one user UID.";
+    return;
+  }
+
   uploadMessage.textContent = "Uploading...";
 
-  const submissionRef = push(dbRef(db, "cornucopia/submissions"));
+  const submissionRef = push(dbRef(db, `${ROOT}/submissions`));
   const submissionId = submissionRef.key;
+  const baseName = stripGlbExtension(file.name);
+  const modelKey = `${sanitizeKey(baseName)}_${String(Date.now()).slice(-6)}`;
   const storagePath = `partner_uploads/${businessId}/${submissionId}/${file.name}`;
   const storageRef = ref(storage, storagePath);
 
@@ -146,12 +167,22 @@ async function uploadModel() {
     async () => {
       await set(submissionRef, {
         submissionId,
+        modelKey,
         businessId,
         businessName,
         uploaderUid: currentUser.uid,
+        uploaderRole: currentProfile.role || "partner",
         fileName: file.name,
+        displayName: (displayNameInput.value || baseName).trim(),
+        question: (questionInput.value || "Would you like this product?").trim(),
+        picPathh: sanitizeKey(baseName),
         storagePath,
+        targetMode,
+        targetUserIds,
         status: "pending",
+        pushedToApp: false,
+        pushedAt: null,
+        pushedCount: 0,
         createdAt: Date.now(),
         approvedAt: null,
         rejectedAt: null,
@@ -160,7 +191,10 @@ async function uploadModel() {
 
       uploadProgress.value = 0;
       glbInput.value = "";
-      uploadMessage.textContent = "Uploaded. Waiting for admin approval.";
+      displayNameInput.value = "";
+      questionInput.value = "";
+      targetUserIdsInput.value = "";
+      uploadMessage.textContent = "Uploaded. Submission is waiting for admin approval/push.";
       await refreshAll();
     }
   );
@@ -170,10 +204,7 @@ async function loadMySubmissions() {
   mySubmissionsBody.innerHTML = "";
   if (!currentUser || !currentProfile) return;
 
-  const snap = await get(dbRef(db, "cornucopia/submissions"));
-  const raw = snap.exists() ? snap.val() : {};
-  const all = Object.entries(raw).map(([id, value]) => ({ id, ...value }));
-
+  const all = await getAllSubmissions();
   const businessId = currentProfile.businessId || currentUser.uid;
   const rows = currentProfile.role === "admin"
     ? all
@@ -188,7 +219,8 @@ async function loadMySubmissions() {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${escapeHtml(item.fileName || "-")}</td>
-      <td><span class="status-pill status-${item.status || "pending"}">${item.status || "pending"}</span></td>
+      <td>${escapeHtml(targetLabel(item))}</td>
+      <td><span class="status-pill status-${item.status || "pending"}">${escapeHtml(statusLabel(item))}</span></td>
       <td>${formatTs(item.createdAt)}</td>
     `;
     mySubmissionsBody.appendChild(tr);
@@ -198,27 +230,28 @@ async function loadMySubmissions() {
   approvedUploads.textContent = String(approved);
 }
 
-async function loadPendingApprovals() {
+async function loadApprovalQueue() {
   pendingBody.innerHTML = "";
   if (!currentProfile || currentProfile.role !== "admin") return;
 
-  const snap = await get(dbRef(db, "cornucopia/submissions"));
-  const raw = snap.exists() ? snap.val() : {};
-  const pending = Object.entries(raw)
-    .map(([id, value]) => ({ id, ...value }))
-    .filter((x) => x.status === "pending")
-    .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  const all = await getAllSubmissions();
+  all.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
-  pending.forEach((item) => {
+  all.forEach((item) => {
+    const canPush = item.status !== "rejected" && !item.pushedToApp;
+
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${escapeHtml(item.businessName || item.businessId || "-")}</td>
       <td>${escapeHtml(item.fileName || "-")}</td>
+      <td>${escapeHtml(targetLabel(item))}</td>
+      <td><span class="status-pill status-${item.status || "pending"}">${escapeHtml(statusLabel(item))}</span></td>
       <td>${formatTs(item.createdAt)}</td>
       <td>
         <div class="row-actions">
-          <button data-id="${item.id}" data-action="approve">Approve</button>
-          <button data-id="${item.id}" data-action="reject">Reject</button>
+          <button class="secondary" data-id="${item.id}" data-action="approve">Approve</button>
+          <button class="danger" data-id="${item.id}" data-action="reject">Reject</button>
+          ${canPush ? `<button class="success" data-id="${item.id}" data-action="push">Push to App</button>` : ""}
         </div>
       </td>
     `;
@@ -230,23 +263,115 @@ async function loadPendingApprovals() {
       const id = btn.getAttribute("data-id");
       const action = btn.getAttribute("data-action");
 
-      await update(dbRef(db, `cornucopia/submissions/${id}`), {
-        status: action === "approve" ? "approved" : "rejected",
-        decisionBy: currentUser.uid,
-        approvedAt: action === "approve" ? Date.now() : null,
-        rejectedAt: action === "reject" ? Date.now() : null
-      });
+      if (action === "approve") {
+        await updateSubmissionStatus(id, "approved");
+      } else if (action === "reject") {
+        await updateSubmissionStatus(id, "rejected");
+      } else if (action === "push") {
+        await pushSubmissionToApp(id);
+      }
 
       await refreshAll();
     });
   });
 }
 
+async function updateSubmissionStatus(id, status) {
+  await update(dbRef(db, `${ROOT}/submissions/${id}`), {
+    status,
+    decisionBy: currentUser.uid,
+    approvedAt: status === "approved" ? Date.now() : null,
+    rejectedAt: status === "rejected" ? Date.now() : null
+  });
+}
+
+async function pushSubmissionToApp(submissionId) {
+  const submissionRef = dbRef(db, `${ROOT}/submissions/${submissionId}`);
+  const submissionSnap = await get(submissionRef);
+  if (!submissionSnap.exists()) return;
+
+  const item = { id: submissionId, ...submissionSnap.val() };
+  if (item.status === "rejected") {
+    alert("Rejected submissions cannot be pushed.");
+    return;
+  }
+
+  if (item.status !== "approved") {
+    await updateSubmissionStatus(submissionId, "approved");
+  }
+
+  const modelKey = item.modelKey || sanitizeKey(stripGlbExtension(item.fileName || `model_${submissionId}`));
+  const modelRef = dbRef(db, `${ROOT}/models/${modelKey}`);
+  const modelSnap = await get(modelRef);
+  const existingModel = modelSnap.exists() ? modelSnap.val() : {};
+
+  const mergedModel = {
+    ...existingModel,
+    name: item.displayName || stripGlbExtension(item.fileName || modelKey),
+    modelNamee: modelKey,
+    picPathh: item.picPathh || existingModel.picPathh || modelKey,
+    question: item.question || existingModel.question || "Would you like this product?",
+    storagePath: item.storagePath,
+    data: {
+      sent: toInt(existingModel?.data?.sent, 0),
+      saved: toInt(existingModel?.data?.saved, 0),
+      yes: toInt(existingModel?.data?.yes, 0),
+      no: toInt(existingModel?.data?.no, 0),
+      rating: String(existingModel?.data?.rating ?? "0.0")
+    }
+  };
+
+  await set(modelRef, mergedModel);
+
+  const userSnap = await get(dbRef(db, `${ROOT}/users`));
+  const usersMap = userSnap.exists() ? userSnap.val() : {};
+  const allUserIds = Object.keys(usersMap);
+
+  let targetUserIds = [];
+  if (item.targetMode === "specific_users") {
+    targetUserIds = (item.targetUserIds || []).filter((uid) => allUserIds.includes(uid));
+  } else {
+    targetUserIds = allUserIds.filter((uid) => {
+      const role = String(usersMap[uid]?.role || "").toLowerCase();
+      return role !== "admin" && role !== "partner";
+    });
+    if (targetUserIds.length === 0) {
+      targetUserIds = allUserIds;
+    }
+  }
+
+  let assigned = 0;
+  for (const uid of targetUserIds) {
+    const userModelRef = dbRef(db, `${ROOT}/users/${uid}/models/${modelKey}`);
+    const existing = await get(userModelRef);
+    if (existing.exists()) continue;
+
+    await set(userModelRef, {
+      MName: modelKey,
+      saved: false,
+      Rating: "0.0",
+      answer: "pending"
+    });
+    assigned += 1;
+  }
+
+  await update(submissionRef, {
+    status: "approved",
+    pushedToApp: true,
+    pushedAt: Date.now(),
+    pushedCount: assigned,
+    modelKey,
+    decisionBy: currentUser.uid
+  });
+
+  alert(`Model pushed to app data. Assigned to ${assigned} users.`);
+}
+
 async function loadAnalytics() {
   if (!currentProfile || !currentUser) return;
 
   const businessId = currentProfile.businessId || currentUser.uid;
-  const snap = await get(dbRef(db, "cornucopia/events"));
+  const snap = await get(dbRef(db, `${ROOT}/events`));
   const raw = snap.exists() ? snap.val() : {};
 
   let opens = 0;
@@ -260,6 +385,53 @@ async function loadAnalytics() {
 
   openCount.textContent = String(opens);
   saveCount.textContent = String(saves);
+}
+
+async function getAllSubmissions() {
+  const snap = await get(dbRef(db, `${ROOT}/submissions`));
+  const raw = snap.exists() ? snap.val() : {};
+  return Object.entries(raw).map(([id, value]) => ({ id, ...value }));
+}
+
+function targetLabel(item) {
+  if (item.targetMode === "specific_users") {
+    const count = Array.isArray(item.targetUserIds) ? item.targetUserIds.length : 0;
+    return `Specific (${count})`;
+  }
+  return "All users";
+}
+
+function statusLabel(item) {
+  const base = item.status || "pending";
+  if (item.pushedToApp) {
+    return `${base} / pushed (${toInt(item.pushedCount, 0)})`;
+  }
+  return base;
+}
+
+function parseTargetUserIds(value) {
+  return String(value || "")
+    .split(/[\s,\n\r]+/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+function sanitizeKey(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/\.glb$/i, "")
+    .replace(/[^a-z0-9_\-]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 50) || "model";
+}
+
+function stripGlbExtension(value) {
+  return String(value || "").replace(/\.glb$/i, "");
+}
+
+function toInt(value, fallback) {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.trunc(n) : fallback;
 }
 
 function bindNavigation() {
@@ -302,4 +474,3 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 }
-

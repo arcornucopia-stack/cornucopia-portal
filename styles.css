@@ -61,12 +61,13 @@ body {
   padding: 24px;
 }
 .auth-form { display: grid; gap: 10px; }
-input, button {
+input, select, textarea, button {
   padding: 12px;
   border-radius: 10px;
   border: 1px solid #c9ddd5;
   font: inherit;
 }
+textarea { resize: vertical; }
 button {
   background: linear-gradient(90deg, var(--brand), var(--brand2));
   color: white;
@@ -137,6 +138,9 @@ tr:last-child td { border-bottom: none; }
 .status-rejected { background: #fef2f2; color: var(--bad); }
 .row-actions { display: flex; gap: 6px; }
 .row-actions button { padding: 6px 10px; font-size: 12px; }
+.row-actions .secondary { background: #205789; color: #fff; }
+.row-actions .danger { background: #b91c1c; color: #fff; }
+.row-actions .success { background: #15803d; color: #fff; }
 @media (max-width: 900px) {
   .shell { grid-template-columns: 1fr; }
   .sidebar { display: flex; gap: 8px; overflow-x: auto; }

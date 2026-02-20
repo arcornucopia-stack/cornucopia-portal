@@ -4,8 +4,9 @@ This portal lets subscribing business partners upload `.glb` files for approval 
 
 ## What is included
 - Partner login
-- Partner upload queue (`pending/approved/rejected`)
-- Admin queue to approve/reject submissions
+- Partner upload with targeting (`all_users` or `specific_users`)
+- Admin queue to approve/reject and push submissions into app data
+- Admin upload also follows same queue/push flow
 - Basic analytics cards: opens and saves
 - Firebase Realtime Database rules template
 - Firebase Storage rules template
@@ -24,6 +25,9 @@ This portal lets subscribing business partners upload `.glb` files for approval 
   - `businessId`, `businessName`, `uploaderUid`
   - `fileName`, `storagePath`
   - `status`: `pending | approved | rejected`
+  - `targetMode`: `all_users | specific_users`
+  - `targetUserIds`: array
+  - `pushedToApp`, `pushedAt`, `pushedCount`
   - `createdAt`, `approvedAt`, `rejectedAt`
   - `decisionBy`
 - `events/{eventId}`
