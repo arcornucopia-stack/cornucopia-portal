@@ -189,12 +189,19 @@ async function uploadModel() {
         decisionBy: null
       });
 
+      if ((currentProfile.role || "").toLowerCase() === "admin") {
+        await updateSubmissionStatus(submissionId, "approved");
+        await pushSubmissionToApp(submissionId, { silent: true });
+      }
+
       uploadProgress.value = 0;
       glbInput.value = "";
       displayNameInput.value = "";
       questionInput.value = "";
       targetUserIdsInput.value = "";
-      uploadMessage.textContent = "Uploaded. Submission is waiting for admin approval/push.";
+      uploadMessage.textContent = (currentProfile.role || "").toLowerCase() === "admin"
+        ? "Uploaded and pushed to app."
+        : "Uploaded. Submission is waiting for admin approval/push.";
       await refreshAll();
     }
   );
@@ -285,7 +292,7 @@ async function updateSubmissionStatus(id, status) {
   });
 }
 
-async function pushSubmissionToApp(submissionId) {
+async function pushSubmissionToApp(submissionId, options = {}) {
   const submissionRef = dbRef(db, `${ROOT}/submissions/${submissionId}`);
   const submissionSnap = await get(submissionRef);
   if (!submissionSnap.exists()) return;
@@ -364,7 +371,9 @@ async function pushSubmissionToApp(submissionId) {
     decisionBy: currentUser.uid
   });
 
-  alert(`Model pushed to app data. Assigned to ${assigned} users.`);
+  if (!options.silent) {
+    alert(`Model pushed to app data. Assigned to ${assigned} users.`);
+  }
 }
 
 async function loadAnalytics() {
