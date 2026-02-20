@@ -3,24 +3,26 @@
     ".read": false,
     ".write": false,
 
-    "users": {
-      "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth != null && auth.uid === $uid"
-      }
-    },
+    "cornucopia": {
+      "users": {
+        "$uid": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".write": "auth != null && auth.uid === $uid"
+        }
+      },
 
-    "submissions": {
-      "$submissionId": {
-        ".read": "auth != null",
-        ".write": "auth != null"
-      }
-    },
+      "submissions": {
+        "$submissionId": {
+          ".read": "auth != null",
+          ".write": "auth != null"
+        }
+      },
 
-    "events": {
-      "$eventId": {
-        ".read": "auth != null",
-        ".write": "auth != null"
+      "events": {
+        "$eventId": {
+          ".read": "auth != null",
+          ".write": "auth != null"
+        }
       }
     }
   }

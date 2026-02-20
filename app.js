@@ -81,9 +81,9 @@ onAuthStateChanged(auth, async (user) => {
     return;
   }
 
-  const profileSnap = await get(child(dbRef(db), `users/${user.uid}`));
+  const profileSnap = await get(child(dbRef(db), `cornucopia/users/${user.uid}`));
   if (!profileSnap.exists()) {
-    authMessage.textContent = "No user role found. Create users/{uid} in Realtime Database.";
+    authMessage.textContent = "No user role found. Create cornucopia/users/{uid} in Realtime Database.";
     await signOut(auth);
     return;
   }
@@ -128,7 +128,7 @@ async function uploadModel() {
 
   uploadMessage.textContent = "Uploading...";
 
-  const submissionRef = push(dbRef(db, "submissions"));
+  const submissionRef = push(dbRef(db, "cornucopia/submissions"));
   const submissionId = submissionRef.key;
   const storagePath = `partner_uploads/${businessId}/${submissionId}/${file.name}`;
   const storageRef = ref(storage, storagePath);
@@ -170,7 +170,7 @@ async function loadMySubmissions() {
   mySubmissionsBody.innerHTML = "";
   if (!currentUser || !currentProfile) return;
 
-  const snap = await get(dbRef(db, "submissions"));
+  const snap = await get(dbRef(db, "cornucopia/submissions"));
   const raw = snap.exists() ? snap.val() : {};
   const all = Object.entries(raw).map(([id, value]) => ({ id, ...value }));
 
@@ -202,7 +202,7 @@ async function loadPendingApprovals() {
   pendingBody.innerHTML = "";
   if (!currentProfile || currentProfile.role !== "admin") return;
 
-  const snap = await get(dbRef(db, "submissions"));
+  const snap = await get(dbRef(db, "cornucopia/submissions"));
   const raw = snap.exists() ? snap.val() : {};
   const pending = Object.entries(raw)
     .map(([id, value]) => ({ id, ...value }))
@@ -230,7 +230,7 @@ async function loadPendingApprovals() {
       const id = btn.getAttribute("data-id");
       const action = btn.getAttribute("data-action");
 
-      await update(dbRef(db, `submissions/${id}`), {
+      await update(dbRef(db, `cornucopia/submissions/${id}`), {
         status: action === "approve" ? "approved" : "rejected",
         decisionBy: currentUser.uid,
         approvedAt: action === "approve" ? Date.now() : null,
@@ -246,7 +246,7 @@ async function loadAnalytics() {
   if (!currentProfile || !currentUser) return;
 
   const businessId = currentProfile.businessId || currentUser.uid;
-  const snap = await get(dbRef(db, "events"));
+  const snap = await get(dbRef(db, "cornucopia/events"));
   const raw = snap.exists() ? snap.val() : {};
 
   let opens = 0;
@@ -302,3 +302,4 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 }
+
