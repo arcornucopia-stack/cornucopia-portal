@@ -363,36 +363,41 @@ async function pushSubmissionToApp(submissionId, options = {}) {
 
   await set(modelRef, mergedModel);
 
-  const userSnap = await get(dbRef(db, `${ROOT}/users`));
-  const usersMap = userSnap.exists() ? userSnap.val() : {};
-  const allUserIds = Object.keys(usersMap);
-
-  let targetUserIds = [];
-  if (item.targetMode === "specific_users") {
-    targetUserIds = (item.targetUserIds || []).filter((uid) => allUserIds.includes(uid));
-  } else {
-    targetUserIds = allUserIds.filter((uid) => {
-      const role = String(usersMap[uid]?.role || "").toLowerCase();
-      return role !== "admin" && role !== "partner";
-    });
-    if (targetUserIds.length === 0) {
-      targetUserIds = allUserIds;
-    }
-  }
-
   let assigned = 0;
-  for (const uid of targetUserIds) {
-    const userModelRef = dbRef(db, `${ROOT}/users/${uid}/models/${modelKey}`);
-    const existing = await get(userModelRef);
-    if (existing.exists()) continue;
+  let assignmentError = null;
+  try {
+    const userSnap = await get(dbRef(db, `${ROOT}/users`));
+    const usersMap = userSnap.exists() ? userSnap.val() : {};
+    const allUserIds = Object.keys(usersMap);
 
-    await set(userModelRef, {
-      MName: modelKey,
-      saved: false,
-      Rating: "0.0",
-      answer: "pending"
-    });
-    assigned += 1;
+    let targetUserIds = [];
+    if (item.targetMode === "specific_users") {
+      targetUserIds = (item.targetUserIds || []).filter((uid) => allUserIds.includes(uid));
+    } else {
+      targetUserIds = allUserIds.filter((uid) => {
+        const role = String(usersMap[uid]?.role || "").toLowerCase();
+        return role !== "admin" && role !== "partner";
+      });
+      if (targetUserIds.length === 0) {
+        targetUserIds = allUserIds;
+      }
+    }
+
+    for (const uid of targetUserIds) {
+      const userModelRef = dbRef(db, `${ROOT}/users/${uid}/models/${modelKey}`);
+      const existing = await get(userModelRef);
+      if (existing.exists()) continue;
+
+      await set(userModelRef, {
+        MName: modelKey,
+        saved: false,
+        Rating: "0.0",
+        answer: "pending"
+      });
+      assigned += 1;
+    }
+  } catch (err) {
+    assignmentError = err?.message || String(err);
   }
 
   await update(submissionRef, {
@@ -401,11 +406,16 @@ async function pushSubmissionToApp(submissionId, options = {}) {
     pushedAt: Date.now(),
     pushedCount: assigned,
     modelKey,
-    decisionBy: currentUser.uid
+    decisionBy: currentUser.uid,
+    assignmentError
   });
 
   if (!options.silent) {
-    alert(`Model pushed to app data. Assigned to ${assigned} users.`);
+    if (assignmentError) {
+      alert(`Model published to app list, but user assignment failed: ${assignmentError}. Use "Send Existing Model To Users".`);
+    } else {
+      alert(`Model pushed to app data. Assigned to ${assigned} users.`);
+    }
   }
 }
 
