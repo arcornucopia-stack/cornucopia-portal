@@ -47,6 +47,8 @@ const displayNameInput = byId("displayNameInput");
 const questionInput = byId("questionInput");
 const targetModeInput = byId("targetModeInput");
 const targetUserIdsInput = byId("targetUserIdsInput");
+const partnerSubscribersPanel = byId("partnerSubscribersPanel");
+const partnerSubscribersList = byId("partnerSubscribersList");
 const glbInput = byId("glbInput");
 const uploadButton = byId("uploadButton");
 const uploadProgress = byId("uploadProgress");
@@ -62,6 +64,11 @@ const dispatchUsersList = byId("dispatchUsersList");
 const refreshDispatchDataButton = byId("refreshDispatchDataButton");
 const sendModelToUsersButton = byId("sendModelToUsersButton");
 const dispatchMessage = byId("dispatchMessage");
+const partnerSelectForSubscribers = byId("partnerSelectForSubscribers");
+const availableUsersForPartnerList = byId("availableUsersForPartnerList");
+const refreshPartnerSubscribersButton = byId("refreshPartnerSubscribersButton");
+const savePartnerSubscribersButton = byId("savePartnerSubscribersButton");
+const partnerSubscribersMessage = byId("partnerSubscribersMessage");
 
 const totalUploads = byId("totalUploads");
 const approvedUploads = byId("approvedUploads");
@@ -88,6 +95,9 @@ logoutButton.addEventListener("click", () => signOut(auth));
 uploadButton.addEventListener("click", uploadModel);
 refreshDispatchDataButton?.addEventListener("click", loadDispatchData);
 sendModelToUsersButton?.addEventListener("click", sendModelToSelectedUsers);
+refreshPartnerSubscribersButton?.addEventListener("click", loadPartnerSubscriptionAdminData);
+savePartnerSubscribersButton?.addEventListener("click", savePartnerSubscribersMapping);
+partnerSelectForSubscribers?.addEventListener("change", syncPartnerSubscribersSelection);
 
 targetModeInput.addEventListener("change", () => {
   targetUserIdsInput.style.display = targetModeInput.value === "specific_users" ? "block" : "none";
@@ -128,7 +138,9 @@ async function refreshAll() {
     loadApprovalQueue(),
     loadAnalytics(),
     loadPublishedModels(),
-    loadDispatchData()
+    loadDispatchData(),
+    loadPartnerSubscriptionAdminData(),
+    loadPartnerSubscribersForUpload()
   ]);
 }
 
@@ -157,9 +169,18 @@ async function uploadModel() {
     return;
   }
 
-  const targetMode = targetModeInput.value;
-  const targetUserIds = parseTargetUserIds(targetUserIdsInput.value);
-  if (targetMode === "specific_users" && targetUserIds.length === 0) {
+  const isAdmin = (currentProfile.role || "").toLowerCase() === "admin";
+  let targetMode = targetModeInput.value;
+  let targetUserIds = parseTargetUserIds(targetUserIdsInput.value);
+
+  if (!isAdmin) {
+    targetMode = "specific_users";
+    targetUserIds = getCheckedPartnerSubscriberIds();
+    if (targetUserIds.length === 0) {
+      uploadMessage.textContent = "Select at least one subscribed user for this partner upload.";
+      return;
+    }
+  } else if (targetMode === "specific_users" && targetUserIds.length === 0) {
     uploadMessage.textContent = "Specific users mode requires at least one user UID.";
     return;
   }
@@ -545,6 +566,124 @@ async function sendModelToSelectedUsers() {
   }
 }
 
+async function loadPartnerSubscribersForUpload() {
+  if (!currentUser || !currentProfile) return;
+  if ((currentProfile.role || "").toLowerCase() === "admin") return;
+
+  partnerSubscribersList.innerHTML = "";
+
+  try {
+    const [subsSnap, usersSnap] = await Promise.all([
+      get(dbRef(db, `${ROOT}/partners/${currentUser.uid}/subscribers`)),
+      get(dbRef(db, `${ROOT}/users`))
+    ]);
+
+    const subscribers = subsSnap.exists() ? Object.keys(subsSnap.val()) : [];
+    const users = usersSnap.exists() ? usersSnap.val() : {};
+
+    subscribers.forEach((uid) => {
+      const user = users[uid] || {};
+      const name = user.name || user.email || user.businessName || uid;
+      const row = document.createElement("label");
+      row.className = "user-row";
+      row.innerHTML = `<input type="checkbox" value="${uid}" /> <span>${escapeHtml(name)} <small>(${escapeHtml(uid)})</small></span>`;
+      partnerSubscribersList.appendChild(row);
+    });
+
+    if (!subscribers.length) {
+      partnerSubscribersList.innerHTML = "<div class='muted'>No subscribers mapped yet. Ask admin to assign subscribers to your partner account.</div>";
+    }
+  } catch (err) {
+    partnerSubscribersList.innerHTML = `<div class='muted'>Could not load subscribers: ${escapeHtml(err.message || String(err))}</div>`;
+  }
+}
+
+function getCheckedPartnerSubscriberIds() {
+  return [...partnerSubscribersList.querySelectorAll("input[type='checkbox']:checked")].map((x) => x.value);
+}
+
+async function loadPartnerSubscriptionAdminData() {
+  if (!currentProfile || (currentProfile.role || "").toLowerCase() !== "admin") return;
+  partnerSubscribersMessage.textContent = "";
+
+  try {
+    const usersSnap = await get(dbRef(db, `${ROOT}/users`));
+    const users = usersSnap.exists() ? usersSnap.val() : {};
+
+    partnerSelectForSubscribers.innerHTML = "<option value=\"\">Select partner...</option>";
+    availableUsersForPartnerList.innerHTML = "";
+
+    Object.entries(users).forEach(([uid, value]) => {
+      const role = String(value?.role || "").toLowerCase();
+      if (role === "partner") {
+        const opt = document.createElement("option");
+        opt.value = uid;
+        opt.textContent = `${value?.businessName || value?.name || uid} (${uid})`;
+        partnerSelectForSubscribers.appendChild(opt);
+      }
+    });
+
+    Object.entries(users).forEach(([uid, value]) => {
+      const role = String(value?.role || "").toLowerCase();
+      if (role === "admin" || role === "partner") return;
+      const row = document.createElement("label");
+      row.className = "user-row";
+      row.innerHTML = `<input type="checkbox" value="${uid}" /> <span>${escapeHtml(value?.name || value?.email || uid)} <small>(${escapeHtml(uid)})</small></span>`;
+      availableUsersForPartnerList.appendChild(row);
+    });
+
+    if (!availableUsersForPartnerList.children.length) {
+      availableUsersForPartnerList.innerHTML = "<div class='muted'>No end-users found.</div>";
+    }
+  } catch (err) {
+    partnerSubscribersMessage.textContent = `Could not load partner subscriber data: ${err.message || err}`;
+  }
+}
+
+async function syncPartnerSubscribersSelection() {
+  const partnerUid = partnerSelectForSubscribers.value;
+  [...availableUsersForPartnerList.querySelectorAll("input[type='checkbox']")].forEach((x) => {
+    x.checked = false;
+  });
+
+  if (!partnerUid) return;
+
+  try {
+    const subsSnap = await get(dbRef(db, `${ROOT}/partners/${partnerUid}/subscribers`));
+    const subs = subsSnap.exists() ? subsSnap.val() : {};
+    [...availableUsersForPartnerList.querySelectorAll("input[type='checkbox']")].forEach((x) => {
+      x.checked = !!subs[x.value];
+    });
+  } catch (err) {
+    partnerSubscribersMessage.textContent = `Could not load existing mapping: ${err.message || err}`;
+  }
+}
+
+async function savePartnerSubscribersMapping() {
+  if (!currentProfile || (currentProfile.role || "").toLowerCase() !== "admin") return;
+  const partnerUid = partnerSelectForSubscribers.value;
+  if (!partnerUid) {
+    partnerSubscribersMessage.textContent = "Select a partner first.";
+    return;
+  }
+
+  const selected = [...availableUsersForPartnerList.querySelectorAll("input[type='checkbox']:checked")].map((x) => x.value);
+  const payload = {};
+  selected.forEach((uid) => {
+    payload[uid] = true;
+  });
+
+  try {
+    await set(dbRef(db, `${ROOT}/partners/${partnerUid}/subscribers`), payload);
+    partnerSubscribersMessage.textContent = `Saved ${selected.length} subscribers for partner.`;
+    if (currentUser?.uid === partnerUid) {
+      await loadPartnerSubscribersForUpload();
+    }
+  } catch (err) {
+    partnerSubscribersMessage.textContent = `Save failed: ${err.message || err}`;
+  }
+}
+
 async function getAllSubmissions() {
   const snap = await get(dbRef(db, `${ROOT}/submissions`));
   const raw = snap.exists() ? snap.val() : {};
@@ -623,6 +762,9 @@ function setUploadUIForRole(isAdmin) {
     document.querySelectorAll(".partner-only").forEach((el) => {
       el.style.display = "none";
     });
+    targetModeInput.style.display = "";
+    targetUserIdsInput.style.display = "";
+    partnerSubscribersPanel.style.display = "none";
     targetModeInput.value = "all_users";
     targetModeInput.dispatchEvent(new Event("change"));
     uploadMessage.textContent = "Admin uploads publish directly to app users.";
@@ -633,6 +775,10 @@ function setUploadUIForRole(isAdmin) {
     document.querySelectorAll(".partner-only").forEach((el) => {
       el.style.display = "";
     });
+    partnerSubscribersPanel.style.display = "";
+    targetModeInput.value = "specific_users";
+    targetModeInput.style.display = "none";
+    targetUserIdsInput.style.display = "none";
     uploadMessage.textContent = "Partner uploads require admin approval before push.";
   }
 }

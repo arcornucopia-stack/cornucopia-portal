@@ -69,6 +69,10 @@
               <option value="specific_users">Target: Specific user UIDs</option>
             </select>
             <textarea id="targetUserIdsInput" class="partner-only" rows="2" placeholder="Comma-separated user UIDs (for Specific users mode)"></textarea>
+            <div id="partnerSubscribersPanel" class="partner-only">
+              <p class="muted">Select subscribed users to receive this model:</p>
+              <div id="partnerSubscribersList" class="users-list"></div>
+            </div>
             <input id="glbInput" type="file" accept=".glb" />
             <button id="uploadButton">Upload For Review</button>
             <progress id="uploadProgress" value="0" max="100"></progress>
@@ -91,6 +95,21 @@
               </thead>
               <tbody id="publishedModelsBody"></tbody>
             </table>
+          </div>
+
+          <div class="admin-only">
+            <h3>Partner Subscriptions</h3>
+            <div class="upload-box">
+              <select id="partnerSelectForSubscribers">
+                <option value="">Select partner...</option>
+              </select>
+              <div id="availableUsersForPartnerList" class="users-list"></div>
+              <div class="row-actions">
+                <button id="refreshPartnerSubscribersButton" class="secondary" type="button">Refresh Partners/Users</button>
+                <button id="savePartnerSubscribersButton" class="success" type="button">Save Subscriber Mapping</button>
+              </div>
+              <p id="partnerSubscribersMessage" class="muted"></p>
+            </div>
           </div>
 
           <div class="admin-only">

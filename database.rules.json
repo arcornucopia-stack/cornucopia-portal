@@ -12,6 +12,13 @@
         }
       },
 
+      "partners": {
+        "$partnerUid": {
+          ".read": "auth != null && (auth.uid === $partnerUid || root.child('cornucopia/users').child(auth.uid).child('role').val() === 'admin')",
+          ".write": "auth != null && root.child('cornucopia/users').child(auth.uid).child('role').val() === 'admin'"
+        }
+      },
+
       "models": {
         "$modelId": {
           ".read": "auth != null",
