@@ -129,11 +129,12 @@ onAuthStateChanged(auth, async (user) => {
   }
 
   currentProfile = profileSnap.val();
-  roleBadge.textContent = currentProfile.role || "partner";
+  const normalizedRole = normalizeRole(currentProfile.role);
+  roleBadge.textContent = normalizedRole ? normalizedRole.toUpperCase() : "UNASSIGNED";
   authScreen.classList.add("hidden");
   appScreen.classList.remove("hidden");
 
-  const isAdmin = (currentProfile.role || "").toLowerCase() === "admin";
+  const isAdmin = normalizedRole === "admin";
   setAdminVisibility(isAdmin);
   setUploadUIForRole(isAdmin);
   await refreshAll();
@@ -240,7 +241,21 @@ async function uploadModel() {
           decisionBy: null
         });
 
-        if ((currentProfile.role || "").toLowerCase() === "admin") {
+        await upsertModelUploadTracker({
+          modelKey,
+          fileName: file.name,
+          displayName: (displayNameInput.value || baseName).trim(),
+          businessId,
+          businessName,
+          uploaderUid: currentUser.uid,
+          uploaderRole: normalizeRole(currentProfile.role) || "partner",
+          storagePath,
+          status: "pending",
+          approved: false,
+          pushedToApp: false
+        });
+
+        if (normalizeRole(currentProfile.role) === "admin") {
           await updateSubmissionStatus(submissionId, "approved");
           await pushSubmissionToApp(submissionId, { silent: true });
         }
@@ -250,7 +265,7 @@ async function uploadModel() {
         displayNameInput.value = "";
         questionInput.value = "";
         targetUserIdsInput.value = "";
-        uploadMessage.textContent = (currentProfile.role || "").toLowerCase() === "admin"
+        uploadMessage.textContent = normalizeRole(currentProfile.role) === "admin"
           ? "Uploaded and pushed to app."
           : "Uploaded. Submission is waiting for admin approval/push.";
         await refreshAll();
@@ -355,6 +370,19 @@ async function updateSubmissionStatus(id, status) {
 
   if (status === "approved") {
     await ensureModelRecordFromSubmission(id);
+  }
+
+  const submissionSnap = await get(dbRef(db, `${ROOT}/submissions/${id}`));
+  if (submissionSnap.exists()) {
+    const s = submissionSnap.val();
+    if (s?.modelKey) {
+      await upsertModelUploadTracker({
+        modelKey: s.modelKey,
+        status,
+        approved: status === "approved",
+        decisionBy: currentUser.uid
+      });
+    }
   }
 }
 
@@ -463,6 +491,16 @@ async function pushSubmissionToApp(submissionId, options = {}) {
     modelKey,
     decisionBy: currentUser.uid,
     assignmentError
+  });
+
+  await upsertModelUploadTracker({
+    modelKey,
+    status: "approved",
+    approved: true,
+    pushedToApp: true,
+    pushedCount: assigned,
+    assignmentError: assignmentError || null,
+    decisionBy: currentUser.uid
   });
 
   if (!options.silent) {
@@ -892,6 +930,25 @@ function setUploadUIForRole(isAdmin) {
     partnerDeliveryMessage.textContent = "";
     uploadMessage.textContent = "Partner uploads require admin approval before push.";
   }
+}
+
+async function upsertModelUploadTracker(data) {
+  if (!data?.modelKey) return;
+  const trackerRef = dbRef(db, `${ROOT}/models_uploads/${data.modelKey}`);
+  const existingSnap = await get(trackerRef);
+  const existing = existingSnap.exists() ? existingSnap.val() : {};
+  await update(trackerRef, {
+    ...existing,
+    ...data,
+    updatedAt: Date.now()
+  });
+}
+
+function normalizeRole(role) {
+  const r = String(role || "").trim().toLowerCase();
+  if (r === "admin") return "admin";
+  if (r === "partner") return "partner";
+  return r || "";
 }
 
 function formatTs(ts) {

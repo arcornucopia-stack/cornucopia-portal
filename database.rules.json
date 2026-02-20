@@ -33,6 +33,13 @@
         }
       },
 
+      "models_uploads": {
+        "$modelId": {
+          ".read": "auth != null",
+          ".write": "auth != null"
+        }
+      },
+
       "submissions": {
         "$submissionId": {
           ".read": "auth != null",
