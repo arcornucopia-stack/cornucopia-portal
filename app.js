@@ -185,10 +185,6 @@ async function uploadModel() {
   if (!isAdmin) {
     targetMode = "specific_users";
     targetUserIds = getCheckedPartnerSubscriberIds();
-    if (targetUserIds.length === 0) {
-      uploadMessage.textContent = "Select at least one subscribed user for this partner upload.";
-      return;
-    }
   } else if (targetMode === "specific_users" && targetUserIds.length === 0) {
     uploadMessage.textContent = "Specific users mode requires at least one user UID.";
     return;
@@ -267,7 +263,7 @@ async function uploadModel() {
         targetUserIdsInput.value = "";
         uploadMessage.textContent = normalizeRole(currentProfile.role) === "admin"
           ? "Uploaded and pushed to app."
-          : "Uploaded. Submission is waiting for admin approval/push.";
+          : "Uploaded. Submission is waiting for admin approval. You can send to users after approval.";
         await refreshAll();
       } catch (err) {
         uploadMessage.textContent = `Upload completed but publish step failed: ${err.message || err}`;
