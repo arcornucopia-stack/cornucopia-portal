@@ -60,28 +60,38 @@
 
         <section id="uploads" class="screen">
           <div class="upload-box">
-            <h3>Upload .glb model</h3>
+            <h3 id="uploadSectionTitle">Upload .glb model</h3>
             <input id="businessNameInput" placeholder="Business name" />
             <input id="displayNameInput" placeholder="Model display name (optional)" />
             <input id="questionInput" placeholder="Prompt question for users (optional)" />
-            <select id="targetModeInput">
+            <select id="targetModeInput" class="partner-only">
               <option value="all_users">Target: All users</option>
               <option value="specific_users">Target: Specific user UIDs</option>
             </select>
-            <textarea id="targetUserIdsInput" rows="2" placeholder="Comma-separated user UIDs (for Specific users mode)"></textarea>
+            <textarea id="targetUserIdsInput" class="partner-only" rows="2" placeholder="Comma-separated user UIDs (for Specific users mode)"></textarea>
             <input id="glbInput" type="file" accept=".glb" />
             <button id="uploadButton">Upload For Review</button>
             <progress id="uploadProgress" value="0" max="100"></progress>
             <p id="uploadMessage" class="muted"></p>
           </div>
 
-          <h3>My submissions</h3>
+          <h3 id="mySubmissionsTitle">My submissions</h3>
           <table>
             <thead>
               <tr><th>File</th><th>Target</th><th>Status</th><th>Date</th></tr>
             </thead>
             <tbody id="mySubmissionsBody"></tbody>
           </table>
+
+          <div class="admin-only">
+            <h3>Published models (App live list)</h3>
+            <table>
+              <thead>
+                <tr><th>Model Key</th><th>Name</th><th>Question</th></tr>
+              </thead>
+              <tbody id="publishedModelsBody"></tbody>
+            </table>
+          </div>
         </section>
 
         <section id="approvals" class="screen admin-only">

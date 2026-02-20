@@ -51,9 +51,12 @@ const glbInput = byId("glbInput");
 const uploadButton = byId("uploadButton");
 const uploadProgress = byId("uploadProgress");
 const uploadMessage = byId("uploadMessage");
+const uploadSectionTitle = byId("uploadSectionTitle");
+const mySubmissionsTitle = byId("mySubmissionsTitle");
 
 const mySubmissionsBody = byId("mySubmissionsBody");
 const pendingBody = byId("pendingBody");
+const publishedModelsBody = byId("publishedModelsBody");
 
 const totalUploads = byId("totalUploads");
 const approvedUploads = byId("approvedUploads");
@@ -105,7 +108,9 @@ onAuthStateChanged(auth, async (user) => {
   authScreen.classList.add("hidden");
   appScreen.classList.remove("hidden");
 
-  setAdminVisibility(currentProfile.role === "admin");
+  const isAdmin = (currentProfile.role || "").toLowerCase() === "admin";
+  setAdminVisibility(isAdmin);
+  setUploadUIForRole(isAdmin);
   await refreshAll();
 });
 
@@ -113,7 +118,8 @@ async function refreshAll() {
   await Promise.all([
     loadMySubmissions(),
     loadApprovalQueue(),
-    loadAnalytics()
+    loadAnalytics(),
+    loadPublishedModels()
   ]);
 }
 
@@ -396,6 +402,26 @@ async function loadAnalytics() {
   saveCount.textContent = String(saves);
 }
 
+async function loadPublishedModels() {
+  publishedModelsBody.innerHTML = "";
+  if (!currentProfile || (currentProfile.role || "").toLowerCase() !== "admin") return;
+
+  const snap = await get(dbRef(db, `${ROOT}/models`));
+  const raw = snap.exists() ? snap.val() : {};
+  const models = Object.entries(raw).map(([id, value]) => ({ id, ...value }));
+  models.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+
+  models.forEach((m) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${escapeHtml(m.id || "-")}</td>
+      <td>${escapeHtml(m.name || "-")}</td>
+      <td>${escapeHtml(m.question || "-")}</td>
+    `;
+    publishedModelsBody.appendChild(tr);
+  });
+}
+
 async function getAllSubmissions() {
   const snap = await get(dbRef(db, `${ROOT}/submissions`));
   const raw = snap.exists() ? snap.val() : {};
@@ -464,6 +490,28 @@ function setAdminVisibility(isAdmin) {
   document.querySelectorAll(".admin-only").forEach((el) => {
     el.style.display = isAdmin ? "" : "none";
   });
+}
+
+function setUploadUIForRole(isAdmin) {
+  if (isAdmin) {
+    uploadSectionTitle.textContent = "Upload .glb model (Publish to app)";
+    mySubmissionsTitle.textContent = "Admin uploads";
+    uploadButton.textContent = "Upload and Publish";
+    document.querySelectorAll(".partner-only").forEach((el) => {
+      el.style.display = "none";
+    });
+    targetModeInput.value = "all_users";
+    targetModeInput.dispatchEvent(new Event("change"));
+    uploadMessage.textContent = "Admin uploads publish directly to app users.";
+  } else {
+    uploadSectionTitle.textContent = "Upload .glb model (Submit for review)";
+    mySubmissionsTitle.textContent = "My submissions";
+    uploadButton.textContent = "Upload For Review";
+    document.querySelectorAll(".partner-only").forEach((el) => {
+      el.style.display = "";
+    });
+    uploadMessage.textContent = "Partner uploads require admin approval before push.";
+  }
 }
 
 function formatTs(ts) {
