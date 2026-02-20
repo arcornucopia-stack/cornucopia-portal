@@ -62,6 +62,7 @@ const totalUploads = byId("totalUploads");
 const approvedUploads = byId("approvedUploads");
 const openCount = byId("openCount");
 const saveCount = byId("saveCount");
+const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 
 let currentUser = null;
 let currentProfile = null;
@@ -136,6 +137,10 @@ async function uploadModel() {
     uploadMessage.textContent = "Only .glb files are allowed.";
     return;
   }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    uploadMessage.textContent = "File is too large. Max size is 100 MB.";
+    return;
+  }
 
   const businessId = currentProfile.businessId || currentUser.uid;
   const businessName = (businessNameInput.value || currentProfile.businessName || "").trim();
@@ -152,6 +157,7 @@ async function uploadModel() {
   }
 
   uploadMessage.textContent = "Uploading...";
+  uploadButton.disabled = true;
 
   const submissionRef = push(dbRef(db, `${ROOT}/submissions`));
   const submissionId = submissionRef.key;
@@ -168,47 +174,54 @@ async function uploadModel() {
       uploadProgress.value = pct;
     },
     (error) => {
-      uploadMessage.textContent = error.message;
+      uploadButton.disabled = false;
+      uploadMessage.textContent = `Upload failed: ${error.message}`;
     },
     async () => {
-      await set(submissionRef, {
-        submissionId,
-        modelKey,
-        businessId,
-        businessName,
-        uploaderUid: currentUser.uid,
-        uploaderRole: currentProfile.role || "partner",
-        fileName: file.name,
-        displayName: (displayNameInput.value || baseName).trim(),
-        question: (questionInput.value || "Would you like this product?").trim(),
-        picPathh: sanitizeKey(baseName),
-        storagePath,
-        targetMode,
-        targetUserIds,
-        status: "pending",
-        pushedToApp: false,
-        pushedAt: null,
-        pushedCount: 0,
-        createdAt: Date.now(),
-        approvedAt: null,
-        rejectedAt: null,
-        decisionBy: null
-      });
+      try {
+        await set(submissionRef, {
+          submissionId,
+          modelKey,
+          businessId,
+          businessName,
+          uploaderUid: currentUser.uid,
+          uploaderRole: currentProfile.role || "partner",
+          fileName: file.name,
+          displayName: (displayNameInput.value || baseName).trim(),
+          question: (questionInput.value || "Would you like this product?").trim(),
+          picPathh: sanitizeKey(baseName),
+          storagePath,
+          targetMode,
+          targetUserIds,
+          status: "pending",
+          pushedToApp: false,
+          pushedAt: null,
+          pushedCount: 0,
+          createdAt: Date.now(),
+          approvedAt: null,
+          rejectedAt: null,
+          decisionBy: null
+        });
 
-      if ((currentProfile.role || "").toLowerCase() === "admin") {
-        await updateSubmissionStatus(submissionId, "approved");
-        await pushSubmissionToApp(submissionId, { silent: true });
+        if ((currentProfile.role || "").toLowerCase() === "admin") {
+          await updateSubmissionStatus(submissionId, "approved");
+          await pushSubmissionToApp(submissionId, { silent: true });
+        }
+
+        uploadProgress.value = 0;
+        glbInput.value = "";
+        displayNameInput.value = "";
+        questionInput.value = "";
+        targetUserIdsInput.value = "";
+        uploadMessage.textContent = (currentProfile.role || "").toLowerCase() === "admin"
+          ? "Uploaded and pushed to app."
+          : "Uploaded. Submission is waiting for admin approval/push.";
+        await refreshAll();
+      } catch (err) {
+        uploadMessage.textContent = `Upload completed but publish step failed: ${err.message || err}`;
+      } finally {
+        uploadButton.disabled = false;
       }
-
-      uploadProgress.value = 0;
-      glbInput.value = "";
-      displayNameInput.value = "";
-      questionInput.value = "";
-      targetUserIdsInput.value = "";
-      uploadMessage.textContent = (currentProfile.role || "").toLowerCase() === "admin"
-        ? "Uploaded and pushed to app."
-        : "Uploaded. Submission is waiting for admin approval/push.";
-      await refreshAll();
     }
   );
 }
