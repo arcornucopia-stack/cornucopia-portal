@@ -36,6 +36,8 @@ body {
   width: 100%;
   border: 1px solid var(--line);
   background: #fff;
+  color: var(--ink);
+  font-weight: 600;
   padding: 10px 12px;
   margin-bottom: 8px;
   border-radius: 10px;
@@ -45,6 +47,7 @@ body {
 .nav-btn.active {
   background: #dbf4ea;
   border-color: #9adcc3;
+  color: #0a5f45;
 }
 .content { padding: 20px; }
 .panel, .card, .upload-box, table {
