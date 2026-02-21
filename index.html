@@ -39,22 +39,26 @@
 
         <section id="dashboard" class="screen active">
           <div class="cards">
-            <article class="card">
+            <button class="card metric-card" id="cardTotalUploads" type="button">
               <h3>Total uploads</h3>
               <p id="totalUploads">0</p>
-            </article>
-            <article class="card">
+              <span class="metric-hint">Open uploads list</span>
+            </button>
+            <button class="card metric-card" id="cardApprovedUploads" type="button">
               <h3>Approved</h3>
               <p id="approvedUploads">0</p>
-            </article>
-            <article class="card">
+              <span class="metric-hint">Show approved only</span>
+            </button>
+            <button class="card metric-card" id="cardOpenCount" type="button">
               <h3>Opens</h3>
               <p id="openCount">0</p>
-            </article>
-            <article class="card">
+              <span class="metric-hint">Engagement signals</span>
+            </button>
+            <button class="card metric-card" id="cardSaveCount" type="button">
               <h3>Saves</h3>
               <p id="saveCount">0</p>
-            </article>
+              <span class="metric-hint">Saved interactions</span>
+            </button>
           </div>
         </section>
 
@@ -80,6 +84,11 @@
           </div>
 
           <h3 id="mySubmissionsTitle">My submissions</h3>
+          <div class="submission-filters">
+            <button id="filterAllSubmissions" type="button" class="filter-btn active">All</button>
+            <button id="filterApprovedSubmissions" type="button" class="filter-btn">Approved</button>
+            <button id="filterPendingSubmissions" type="button" class="filter-btn">Pending</button>
+          </div>
           <table>
             <thead>
               <tr><th>File</th><th>Target</th><th>Status</th><th>Date</th></tr>

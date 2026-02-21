@@ -79,10 +79,17 @@ const totalUploads = byId("totalUploads");
 const approvedUploads = byId("approvedUploads");
 const openCount = byId("openCount");
 const saveCount = byId("saveCount");
+const cardTotalUploads = byId("cardTotalUploads");
+const cardApprovedUploads = byId("cardApprovedUploads");
+const filterAllSubmissions = byId("filterAllSubmissions");
+const filterApprovedSubmissions = byId("filterApprovedSubmissions");
+const filterPendingSubmissions = byId("filterPendingSubmissions");
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 
 let currentUser = null;
 let currentProfile = null;
+let submissionsCache = [];
+let currentSubmissionFilter = "all";
 
 bindNavigation();
 
@@ -105,6 +112,17 @@ sendPartnerModelButton?.addEventListener("click", sendApprovedPartnerModelToUser
 refreshPartnerSubscribersButton?.addEventListener("click", loadPartnerSubscriptionAdminData);
 savePartnerSubscribersButton?.addEventListener("click", savePartnerSubscribersMapping);
 partnerSelectForSubscribers?.addEventListener("change", syncPartnerSubscribersSelection);
+cardTotalUploads?.addEventListener("click", () => {
+  setActiveScreen("uploads");
+  setSubmissionFilter("all");
+});
+cardApprovedUploads?.addEventListener("click", () => {
+  setActiveScreen("uploads");
+  setSubmissionFilter("approved");
+});
+filterAllSubmissions?.addEventListener("click", () => setSubmissionFilter("all"));
+filterApprovedSubmissions?.addEventListener("click", () => setSubmissionFilter("approved"));
+filterPendingSubmissions?.addEventListener("click", () => setSubmissionFilter("pending"));
 
 targetModeInput.addEventListener("change", () => {
   targetUserIdsInput.style.display = targetModeInput.value === "specific_users" ? "block" : "none";
@@ -137,6 +155,7 @@ onAuthStateChanged(auth, async (user) => {
   const isAdmin = normalizedRole === "admin";
   setAdminVisibility(isAdmin);
   setUploadUIForRole(isAdmin);
+  setSubmissionFilter("all");
   setActiveScreen("dashboard");
   await refreshAll();
 });
@@ -276,12 +295,13 @@ async function uploadModel() {
 }
 
 async function loadMySubmissions() {
+  submissionsCache = [];
   mySubmissionsBody.innerHTML = "";
   if (!currentUser || !currentProfile) return;
   try {
     const all = await getAllSubmissions();
     const businessId = currentProfile.businessId || currentUser.uid;
-    const rows = currentProfile.role === "admin"
+    const rows = normalizeRole(currentProfile.role) === "admin"
       ? all
       : all.filter((x) => x.businessId === businessId);
 
@@ -290,19 +310,12 @@ async function loadMySubmissions() {
     let approved = 0;
     rows.forEach((item) => {
       if (item.status === "approved") approved += 1;
-
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${escapeHtml(item.fileName || "-")}</td>
-        <td>${escapeHtml(targetLabel(item))}</td>
-        <td><span class="status-pill status-${item.status || "pending"}">${escapeHtml(statusLabel(item))}</span></td>
-        <td>${formatTs(item.createdAt)}</td>
-      `;
-      mySubmissionsBody.appendChild(tr);
     });
 
+    submissionsCache = rows;
     totalUploads.textContent = String(rows.length);
     approvedUploads.textContent = String(approved);
+    renderSubmissionRows();
   } catch (err) {
     uploadMessage.textContent = `Could not load submissions: ${err.message || err}`;
   }
@@ -310,7 +323,7 @@ async function loadMySubmissions() {
 
 async function loadApprovalQueue() {
   pendingBody.innerHTML = "";
-  if (!currentProfile || currentProfile.role !== "admin") return;
+  if (!currentProfile || normalizeRole(currentProfile.role) !== "admin") return;
   try {
     const all = await getAllSubmissions();
     all.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -904,6 +917,46 @@ function setActiveScreen(screenId) {
 
   const label = targetButton ? targetButton.textContent : "Dashboard";
   byId("welcomeText").textContent = label;
+}
+
+function setSubmissionFilter(filter) {
+  currentSubmissionFilter = filter;
+  updateSubmissionFilterUI();
+  renderSubmissionRows();
+}
+
+function updateSubmissionFilterUI() {
+  const map = {
+    all: filterAllSubmissions,
+    approved: filterApprovedSubmissions,
+    pending: filterPendingSubmissions
+  };
+  [filterAllSubmissions, filterApprovedSubmissions, filterPendingSubmissions].forEach((btn) => {
+    btn?.classList.remove("active");
+  });
+  map[currentSubmissionFilter]?.classList.add("active");
+}
+
+function renderSubmissionRows() {
+  if (!mySubmissionsBody) return;
+  mySubmissionsBody.innerHTML = "";
+  let rows = submissionsCache;
+  if (currentSubmissionFilter === "approved") {
+    rows = rows.filter((item) => item.status === "approved");
+  } else if (currentSubmissionFilter === "pending") {
+    rows = rows.filter((item) => item.status === "pending");
+  }
+
+  rows.forEach((item) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${escapeHtml(item.fileName || "-")}</td>
+      <td>${escapeHtml(targetLabel(item))}</td>
+      <td><span class="status-pill status-${item.status || "pending"}">${escapeHtml(statusLabel(item))}</span></td>
+      <td>${formatTs(item.createdAt)}</td>
+    `;
+    mySubmissionsBody.appendChild(tr);
+  });
 }
 
 function setAdminVisibility(isAdmin) {
