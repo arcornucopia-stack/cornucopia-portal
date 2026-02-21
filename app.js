@@ -137,6 +137,7 @@ onAuthStateChanged(auth, async (user) => {
   const isAdmin = normalizedRole === "admin";
   setAdminVisibility(isAdmin);
   setUploadUIForRole(isAdmin);
+  setActiveScreen("dashboard");
   await refreshAll();
 });
 
@@ -879,17 +880,30 @@ function bindNavigation() {
   const navButtons = [...document.querySelectorAll(".nav-btn[data-screen]")];
   navButtons.forEach((btn) => {
     btn.addEventListener("click", () => {
-      navButtons.forEach((x) => x.classList.remove("active"));
-      btn.classList.add("active");
-
       const target = btn.getAttribute("data-screen");
-      [...document.querySelectorAll(".screen")].forEach((screen) => {
-        screen.classList.toggle("active", screen.id === target);
-      });
-
-      byId("welcomeText").textContent = btn.textContent;
+      setActiveScreen(target);
     });
   });
+}
+
+function setActiveScreen(screenId) {
+  const navButtons = [...document.querySelectorAll(".nav-btn[data-screen]")];
+  const screens = [...document.querySelectorAll(".screen")];
+  const targetButton = navButtons.find((btn) => btn.getAttribute("data-screen") === screenId);
+  const targetScreen = screens.find((screen) => screen.id === screenId);
+
+  navButtons.forEach((btn) => btn.classList.remove("active"));
+  screens.forEach((screen) => screen.classList.remove("active"));
+
+  if (targetButton) {
+    targetButton.classList.add("active");
+  }
+  if (targetScreen) {
+    targetScreen.classList.add("active");
+  }
+
+  const label = targetButton ? targetButton.textContent : "Dashboard";
+  byId("welcomeText").textContent = label;
 }
 
 function setAdminVisibility(isAdmin) {
