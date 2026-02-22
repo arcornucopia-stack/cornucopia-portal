@@ -1,5 +1,5 @@
-﻿window.CORNUCOPIA_FIREBASE_CONFIG = {
-  apiKey: "AIzaSyCQCNET2drM4U-gfsEPRr8YFvXr1prXY-A",
+window.CORNUCOPIA_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyA8U_2xajYohJBBfYWeY35O6g5tDsRIDQI",
   authDomain: "cornucopia-54b02.firebaseapp.com",
   projectId: "cornucopia-54b02",
   storageBucket: "cornucopia-54b02.appspot.com",
