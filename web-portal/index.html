@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -13,6 +13,7 @@
   <div class="shell">
     <aside class="sidebar">
       <div class="brand">Cornucopia</div>
+      <div id="sidebarCompany" class="sidebar-company hidden"></div>
       <button class="nav-btn active" data-screen="dashboard">Dashboard</button>
       <button class="nav-btn" data-screen="uploads">Uploads</button>
       <button class="nav-btn admin-only" data-screen="approvals">Approvals</button>
@@ -34,60 +35,210 @@
       <section id="appScreen" class="hidden">
         <header class="topbar">
           <h2 id="welcomeText">Dashboard</h2>
-          <span id="roleBadge" class="badge">role</span>
+          <div class="topbar-right">
+            <span id="roleBadge" class="badge">role</span>
+          </div>
         </header>
 
         <section id="dashboard" class="screen active">
           <div class="cards">
-            <article class="card">
+            <button class="card metric-card" id="cardTotalUploads" type="button">
               <h3>Total uploads</h3>
               <p id="totalUploads">0</p>
-            </article>
-            <article class="card">
+              <span class="metric-hint">Open uploads list</span>
+            </button>
+            <button class="card metric-card" id="cardApprovedUploads" type="button">
               <h3>Approved</h3>
               <p id="approvedUploads">0</p>
-            </article>
-            <article class="card">
+              <span class="metric-hint">Show approved only</span>
+            </button>
+            <button class="card metric-card" id="cardOpenCount" type="button">
               <h3>Opens</h3>
               <p id="openCount">0</p>
-            </article>
-            <article class="card">
+              <span class="metric-hint">Engagement signals</span>
+            </button>
+            <button class="card metric-card" id="cardSaveCount" type="button">
               <h3>Saves</h3>
               <p id="saveCount">0</p>
-            </article>
+              <span class="metric-hint">Saved interactions</span>
+            </button>
           </div>
         </section>
 
         <section id="uploads" class="screen">
-          <div class="upload-box">
-            <h3>Upload .glb model</h3>
-            <input id="businessNameInput" placeholder="Business name" />
-            <input id="glbInput" type="file" accept=".glb" />
-            <button id="uploadButton">Upload For Review</button>
-            <progress id="uploadProgress" value="0" max="100"></progress>
-            <p id="uploadMessage" class="muted"></p>
+          <div class="uploads-header">
+            <div class="submission-filters">
+              <button id="filterAllSubmissions" type="button" class="filter-btn active">All</button>
+              <button id="filterApprovedSubmissions" type="button" class="filter-btn">Approved</button>
+              <button id="filterPendingSubmissions" type="button" class="filter-btn">Pending</button>
+            </div>
+            <button id="openUploadModal" type="button" class="upload-trigger">+ New Upload</button>
           </div>
 
-          <h3>My submissions</h3>
           <table>
             <thead>
-              <tr><th>File</th><th>Status</th><th>Date</th></tr>
+              <tr>
+                <th>Model</th>
+                <th class="admin-only-th">Business</th>
+                <th>Status</th>
+                <th>Questions</th>
+                <th>Date</th>
+              </tr>
             </thead>
             <tbody id="mySubmissionsBody"></tbody>
           </table>
+
+          <div class="partner-only" style="margin-top:24px">
+            <h3>Send Approved Models To Users</h3>
+            <div class="upload-box">
+              <select id="partnerApprovedModelSelect">
+                <option value="">Select approved model...</option>
+              </select>
+              <div id="partnerDeliveryUsersList" class="users-list"></div>
+              <div class="row-actions">
+                <button id="refreshPartnerDeliveryButton" class="secondary" type="button">Refresh Models/Users</button>
+                <button id="sendPartnerModelButton" class="success" type="button">Send Model To Selected Users</button>
+              </div>
+              <p id="partnerDeliveryMessage" class="muted"></p>
+            </div>
+          </div>
+
+          <div class="admin-only">
+            <h3>Published models (App live list)</h3>
+            <table>
+              <thead>
+                <tr><th>Model Key</th><th>Name</th><th>Question</th></tr>
+              </thead>
+              <tbody id="publishedModelsBody"></tbody>
+            </table>
+          </div>
+
+          <div class="admin-only">
+            <h3>Partner Subscriptions</h3>
+            <div class="upload-box">
+              <select id="partnerSelectForSubscribers">
+                <option value="">Select partner...</option>
+              </select>
+              <div id="availableUsersForPartnerList" class="users-list"></div>
+              <div class="row-actions">
+                <button id="refreshPartnerSubscribersButton" class="secondary" type="button">Refresh Partners/Users</button>
+                <button id="savePartnerSubscribersButton" class="success" type="button">Save Subscriber Mapping</button>
+              </div>
+              <p id="partnerSubscribersMessage" class="muted"></p>
+            </div>
+          </div>
+
+          <div class="admin-only">
+            <h3>Send Existing Model To Users</h3>
+            <div class="upload-box">
+              <select id="dispatchModelSelect">
+                <option value="">Select model...</option>
+              </select>
+              <div id="dispatchUsersList" class="users-list"></div>
+              <div class="row-actions">
+                <button id="refreshDispatchDataButton" class="secondary" type="button">Refresh Users/Models</button>
+                <button id="sendModelToUsersButton" class="success" type="button">Send To Selected Users</button>
+              </div>
+              <p id="dispatchMessage" class="muted"></p>
+            </div>
+          </div>
         </section>
 
         <section id="approvals" class="screen admin-only">
-          <h3>Pending approvals</h3>
+          <h3>Approval Queue</h3>
           <table>
             <thead>
-              <tr><th>Business</th><th>File</th><th>Date</th><th>Actions</th></tr>
+              <tr><th>Business</th><th>File</th><th>Target</th><th>Status</th><th>Date</th><th>Actions</th></tr>
             </thead>
             <tbody id="pendingBody"></tbody>
           </table>
         </section>
       </section>
     </main>
+  </div>
+
+  <!-- Hidden legacy inputs kept for JS compatibility -->
+  <input id="businessNameInput" type="hidden" />
+  <input id="questionInput" type="hidden" />
+  <input id="uploadSectionTitle" type="hidden" />
+  <input id="mySubmissionsTitle" type="hidden" />
+  <input id="cardTotalUploads" type="hidden" />
+  <input id="cardApprovedUploads" type="hidden" />
+
+  <!-- Upload Modal -->
+  <div id="uploadModal" class="modal-overlay hidden">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h3 id="uploadModalTitle">New Upload</h3>
+        <button id="closeUploadModal" class="icon-btn" type="button">✕</button>
+      </div>
+      <div class="modal-body">
+        <label class="field-label">Model name</label>
+        <input id="displayNameInput" placeholder="e.g. Air Force 1 Collab" />
+
+        <!-- Admin-only targeting -->
+        <div class="admin-only">
+          <label class="field-label">Target audience</label>
+          <select id="targetModeInput">
+            <option value="all_users">All users</option>
+            <option value="specific_users">Specific user UIDs</option>
+          </select>
+          <textarea id="targetUserIdsInput" rows="2" placeholder="Comma-separated user UIDs (specific users only)"></textarea>
+        </div>
+
+        <!-- Partner subscriber preselect -->
+        <div id="partnerSubscribersPanel" class="partner-only">
+          <label class="field-label">Preselect subscribers (optional)</label>
+          <p class="muted" style="margin:0 0 6px">You can also send to subscribers after approval.</p>
+          <div id="partnerSubscribersList" class="users-list"></div>
+        </div>
+
+        <label class="field-label">GLB file</label>
+        <input id="glbInput" type="file" accept=".glb" />
+        <button id="uploadButton" type="button">Upload For Review</button>
+        <progress id="uploadProgress" value="0" max="100" style="width:100%"></progress>
+        <p id="uploadMessage" class="muted"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Model Detail Modal -->
+  <div id="modelDetailModal" class="modal-overlay hidden">
+    <div class="modal-panel modal-large">
+      <div class="modal-header">
+        <div>
+          <h3 id="modelDetailTitle">Model</h3>
+          <p id="modelDetailMeta" class="muted" style="margin:2px 0 0"></p>
+        </div>
+        <button id="closeModelDetail" class="icon-btn" type="button">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="questionsList" class="questions-list"></div>
+
+        <div class="add-question-form">
+          <h4 style="margin:0 0 10px">Add a question</h4>
+          <label class="field-label">Question type</label>
+          <select id="questionTypeSelect">
+            <option value="yes_no">Yes / No</option>
+            <option value="multiple_choice">Multiple Choice</option>
+            <option value="rating">Rating (1 – 5)</option>
+            <option value="open_text">Open Text</option>
+          </select>
+          <label class="field-label">Question text</label>
+          <input id="questionTextInput" placeholder="e.g. Would you wear this to a dinner party?" />
+          <div id="mcOptionsContainer" class="hidden">
+            <label class="field-label">Answer options</label>
+            <div id="mcOptionsList">
+              <input class="mc-option" placeholder="Option 1" />
+              <input class="mc-option" placeholder="Option 2" />
+            </div>
+            <button id="addMcOption" type="button" class="secondary" style="margin-top:6px">+ Add option</button>
+          </div>
+          <button id="addQuestionButton" type="button">Add Question</button>
+          <p id="questionMessage" class="muted"></p>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="./firebase-config.js"></script>
