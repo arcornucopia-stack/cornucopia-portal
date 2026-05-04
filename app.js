@@ -912,8 +912,6 @@ async function getAllSubmissions() {
 
 function openModelDetail(item) {
   if (!item?.id) return;
-  // Don't open if upload modal is already open
-  if (!byId("uploadModal")?.classList.contains("hidden")) return;
   currentDetailSubmissionId = item.id;
   const title = item.displayName || item.fileName || "Model";
   byId("modelDetailTitle").textContent = title;
@@ -1109,15 +1107,18 @@ function renderSubmissionRows() {
     const displayName = item.displayName || item.fileName || "-";
 
     const tr = document.createElement("tr");
-    tr.className = "clickable-row";
     tr.innerHTML = `
       <td><strong>${escapeHtml(displayName)}</strong><br><span class="muted" style="font-size:12px">${escapeHtml(item.fileName || "")}</span></td>
       ${isAdmin ? `<td>${escapeHtml(item.businessName || item.businessId || "-")}</td>` : ""}
       <td><span class="status-pill status-${item.status || "pending"}">${escapeHtml(statusLabel(item))}</span></td>
-      <td><span class="${qBadgeClass}">${qLabel}</span></td>
+      <td>
+        <button class="manage-questions-btn" type="button">
+          <span class="${qBadgeClass}">${qLabel}</span>
+        </button>
+      </td>
       <td>${formatTs(item.createdAt)}</td>
     `;
-    tr.addEventListener("click", () => openModelDetail(item));
+    tr.querySelector(".manage-questions-btn").addEventListener("click", () => openModelDetail(item));
     mySubmissionsBody.appendChild(tr);
   });
 }

@@ -383,8 +383,17 @@ tr:last-child td { border-bottom: none; }
   margin-bottom: -4px;
 }
 
-.clickable-row { cursor: pointer; transition: background 0.12s; }
-.clickable-row:hover td { background: #f3faf7; }
+.manage-questions-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.manage-questions-btn:hover .q-count-badge {
+  background: #c6f0db;
+  color: #0a5f45;
+}
 
 .admin-only-th { display: none; }
 
