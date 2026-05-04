@@ -327,6 +327,8 @@ tr:last-child td { border-bottom: none; }
   padding: 20px;
 }
 
+.modal-overlay.hidden { display: none; }
+
 .modal-panel {
   background: #fff;
   border-radius: 18px;
