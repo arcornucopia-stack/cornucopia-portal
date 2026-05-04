@@ -180,9 +180,11 @@ onAuthStateChanged(auth, async (user) => {
   if (!user) {
     authScreen.classList.remove("hidden");
     appScreen.classList.add("hidden");
+    document.querySelector(".shell")?.classList.add("auth-mode");
     currentProfile = null;
     return;
   }
+  document.querySelector(".shell")?.classList.remove("auth-mode");
 
   const profileSnap = await get(child(dbRef(db), `${ROOT}/users/${user.uid}`));
   if (!profileSnap.exists()) {
