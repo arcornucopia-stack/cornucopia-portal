@@ -90,8 +90,10 @@ let currentUser = null;
 let currentProfile = null;
 let submissionsCache = [];
 let currentSubmissionFilter = "all";
+let currentDetailSubmissionId = null;
 
 bindNavigation();
+bindModals();
 
 loginButton.addEventListener("click", async () => {
   authMessage.textContent = "Signing in...";
@@ -112,21 +114,64 @@ sendPartnerModelButton?.addEventListener("click", sendApprovedPartnerModelToUser
 refreshPartnerSubscribersButton?.addEventListener("click", loadPartnerSubscriptionAdminData);
 savePartnerSubscribersButton?.addEventListener("click", savePartnerSubscribersMapping);
 partnerSelectForSubscribers?.addEventListener("change", syncPartnerSubscribersSelection);
-cardTotalUploads?.addEventListener("click", () => {
-  setActiveScreen("uploads");
-  setSubmissionFilter("all");
-});
-cardApprovedUploads?.addEventListener("click", () => {
-  setActiveScreen("uploads");
-  setSubmissionFilter("approved");
-});
+byId("cardTotalUploads")?.addEventListener("click", () => { setActiveScreen("uploads"); setSubmissionFilter("all"); });
+byId("cardApprovedUploads")?.addEventListener("click", () => { setActiveScreen("uploads"); setSubmissionFilter("approved"); });
 filterAllSubmissions?.addEventListener("click", () => setSubmissionFilter("all"));
 filterApprovedSubmissions?.addEventListener("click", () => setSubmissionFilter("approved"));
 filterPendingSubmissions?.addEventListener("click", () => setSubmissionFilter("pending"));
 
-targetModeInput.addEventListener("change", () => {
-  targetUserIdsInput.style.display = targetModeInput.value === "specific_users" ? "block" : "none";
+targetModeInput?.addEventListener("change", () => {
+  const isSpecific = targetModeInput.value === "specific_users";
+  if (targetUserIdsInput) targetUserIdsInput.style.display = isSpecific ? "block" : "none";
 });
+
+function bindModals() {
+  // Upload modal
+  byId("openUploadModal")?.addEventListener("click", () => {
+    byId("uploadModal")?.classList.remove("hidden");
+  });
+  byId("closeUploadModal")?.addEventListener("click", closeUploadModal);
+  byId("uploadModal")?.addEventListener("click", (e) => {
+    if (e.target === byId("uploadModal")) closeUploadModal();
+  });
+
+  // Model detail modal
+  byId("closeModelDetail")?.addEventListener("click", closeModelDetail);
+  byId("modelDetailModal")?.addEventListener("click", (e) => {
+    if (e.target === byId("modelDetailModal")) closeModelDetail();
+  });
+
+  // Multiple choice option toggle
+  byId("questionTypeSelect")?.addEventListener("change", () => {
+    const isMc = byId("questionTypeSelect").value === "multiple_choice";
+    byId("mcOptionsContainer")?.classList.toggle("hidden", !isMc);
+  });
+
+  // Add MC option
+  byId("addMcOption")?.addEventListener("click", () => {
+    const list = byId("mcOptionsList");
+    const inp = document.createElement("input");
+    inp.className = "mc-option";
+    inp.placeholder = `Option ${list.querySelectorAll(".mc-option").length + 1}`;
+    list.appendChild(inp);
+  });
+
+  // Add question
+  byId("addQuestionButton")?.addEventListener("click", addQuestionToModel);
+}
+
+function closeUploadModal() {
+  byId("uploadModal")?.classList.add("hidden");
+  if (uploadProgress) uploadProgress.value = 0;
+  if (uploadMessage) uploadMessage.textContent = "";
+  if (displayNameInput) displayNameInput.value = "";
+  if (glbInput) glbInput.value = "";
+}
+
+function closeModelDetail() {
+  byId("modelDetailModal")?.classList.add("hidden");
+  currentDetailSubmissionId = null;
+}
 targetModeInput.dispatchEvent(new Event("change"));
 
 onAuthStateChanged(auth, async (user) => {
@@ -135,9 +180,11 @@ onAuthStateChanged(auth, async (user) => {
   if (!user) {
     authScreen.classList.remove("hidden");
     appScreen.classList.add("hidden");
+    document.querySelector(".shell")?.classList.add("auth-mode");
     currentProfile = null;
     return;
   }
+  document.querySelector(".shell")?.classList.remove("auth-mode");
 
   const profileSnap = await get(child(dbRef(db), `${ROOT}/users/${user.uid}`));
   if (!profileSnap.exists()) {
@@ -152,7 +199,20 @@ onAuthStateChanged(auth, async (user) => {
   authScreen.classList.add("hidden");
   appScreen.classList.remove("hidden");
 
+  // Show company name in sidebar
+  const companyName = currentProfile.businessName || currentProfile.name || "";
+  const sidebarCompany = byId("sidebarCompany");
+  if (sidebarCompany) {
+    sidebarCompany.textContent = companyName;
+    sidebarCompany.classList.toggle("hidden", !companyName);
+  }
+
+  // Show admin business column in submissions table
   const isAdmin = normalizedRole === "admin";
+  document.querySelectorAll(".admin-only-th").forEach((th) => {
+    th.style.display = isAdmin ? "" : "none";
+  });
+
   setAdminVisibility(isAdmin);
   setUploadUIForRole(isAdmin);
   setSubmissionFilter("all");
@@ -192,15 +252,11 @@ async function uploadModel() {
   }
 
   const businessId = currentProfile.businessId || currentUser.uid;
-  const businessName = (businessNameInput.value || currentProfile.businessName || "").trim();
-  if (!businessName) {
-    uploadMessage.textContent = "Business name is required.";
-    return;
-  }
+  const businessName = (currentProfile.businessName || currentProfile.name || businessId).trim();
 
   const isAdmin = (currentProfile.role || "").toLowerCase() === "admin";
-  let targetMode = targetModeInput.value;
-  let targetUserIds = parseTargetUserIds(targetUserIdsInput.value);
+  let targetMode = targetModeInput?.value || "all_users";
+  let targetUserIds = parseTargetUserIds(targetUserIdsInput?.value || "");
 
   if (!isAdmin) {
     targetMode = "specific_users";
@@ -241,8 +297,8 @@ async function uploadModel() {
           uploaderUid: currentUser.uid,
           uploaderRole: currentProfile.role || "partner",
           fileName: file.name,
-          displayName: (displayNameInput.value || baseName).trim(),
-          question: (questionInput.value || "Would you like this product?").trim(),
+          displayName: (displayNameInput?.value || baseName).trim(),
+          question: "",
           picPathh: sanitizeKey(baseName),
           storagePath,
           targetMode,
@@ -276,14 +332,7 @@ async function uploadModel() {
           await pushSubmissionToApp(submissionId, { silent: true });
         }
 
-        uploadProgress.value = 0;
-        glbInput.value = "";
-        displayNameInput.value = "";
-        questionInput.value = "";
-        targetUserIdsInput.value = "";
-        uploadMessage.textContent = normalizeRole(currentProfile.role) === "admin"
-          ? "Uploaded and pushed to app."
-          : "Uploaded. Submission is waiting for admin approval. You can send to users after approval.";
+        closeUploadModal();
         await refreshAll();
       } catch (err) {
         uploadMessage.textContent = `Upload completed but publish step failed: ${err.message || err}`;
@@ -525,18 +574,25 @@ async function pushSubmissionToApp(submissionId, options = {}) {
 async function loadAnalytics() {
   if (!currentProfile || !currentUser) return;
   try {
+    const isAdmin = normalizeRole(currentProfile.role) === "admin";
     const businessId = currentProfile.businessId || currentUser.uid;
-    const snap = await get(dbRef(db, `${ROOT}/events`));
-    const raw = snap.exists() ? snap.val() : {};
+
+    const all = await getAllSubmissions();
+    const relevant = isAdmin ? all : all.filter((x) => x.businessId === businessId);
+    const modelKeys = relevant.map((x) => x.modelKey).filter(Boolean);
 
     let opens = 0;
     let saves = 0;
 
-    Object.values(raw).forEach((event) => {
-      if (!event || event.businessId !== businessId) return;
-      if (event.eventType === "open") opens += 1;
-      if (event.eventType === "save") saves += 1;
-    });
+    await Promise.all(
+      modelKeys.map(async (key) => {
+        const snap = await get(dbRef(db, `${ROOT}/models/${key}/data`));
+        if (!snap.exists()) return;
+        const d = snap.val();
+        opens += toInt(d.yes, 0) + toInt(d.no, 0);
+        saves += toInt(d.saved, 0);
+      })
+    );
 
     openCount.textContent = String(opens);
     saveCount.textContent = String(saves);
@@ -848,6 +904,94 @@ async function getAllSubmissions() {
   return Object.entries(raw).map(([id, value]) => ({ id, ...value }));
 }
 
+function openModelDetail(item) {
+  currentDetailSubmissionId = item.id;
+  const title = item.displayName || item.fileName || "Model";
+  byId("modelDetailTitle").textContent = title;
+  byId("modelDetailMeta").textContent = `Status: ${statusLabel(item)} · Uploaded ${formatTs(item.createdAt)}`;
+  renderQuestions(item.questions || {});
+  byId("questionTextInput").value = "";
+  byId("questionMessage").textContent = "";
+  byId("questionTypeSelect").value = "yes_no";
+  byId("mcOptionsContainer")?.classList.add("hidden");
+  byId("modelDetailModal")?.classList.remove("hidden");
+}
+
+function renderQuestions(questions) {
+  const list = byId("questionsList");
+  if (!list) return;
+  list.innerHTML = "";
+  const entries = Object.entries(questions);
+  if (entries.length === 0) {
+    list.innerHTML = `<div class="empty-questions">No questions yet. Add one below to start collecting feedback.</div>`;
+    return;
+  }
+  entries.forEach(([qId, q]) => {
+    const card = document.createElement("div");
+    card.className = "question-card";
+    const typeLabels = { yes_no: "Yes / No", multiple_choice: "Multiple Choice", rating: "Rating", open_text: "Open Text" };
+    const optionsHtml = (q.type === "multiple_choice" && Array.isArray(q.options) && q.options.length)
+      ? `<ul class="question-options">${q.options.map((o) => `<li>${escapeHtml(o)}</li>`).join("")}</ul>`
+      : q.type === "rating" ? `<ul class="question-options"><li>1</li><li>2</li><li>3</li><li>4</li><li>5</li></ul>` : "";
+    card.innerHTML = `
+      <div class="question-card-body">
+        <span class="question-type-badge qtype-${q.type}">${typeLabels[q.type] || q.type}</span>
+        <p style="margin-top:6px">${escapeHtml(q.text || "")}</p>
+        ${optionsHtml}
+      </div>
+      <button class="delete-question-btn" data-qid="${qId}" title="Remove question">✕</button>
+    `;
+    card.querySelector(".delete-question-btn").addEventListener("click", () => deleteQuestion(qId));
+    list.appendChild(card);
+  });
+}
+
+async function addQuestionToModel() {
+  if (!currentDetailSubmissionId) return;
+  const type = byId("questionTypeSelect")?.value;
+  const text = (byId("questionTextInput")?.value || "").trim();
+  const msgEl = byId("questionMessage");
+
+  if (!text) { if (msgEl) msgEl.textContent = "Question text is required."; return; }
+
+  let options = [];
+  if (type === "multiple_choice") {
+    options = [...document.querySelectorAll(".mc-option")]
+      .map((el) => el.value.trim())
+      .filter(Boolean);
+    if (options.length < 2) { if (msgEl) msgEl.textContent = "Add at least 2 options."; return; }
+  }
+
+  const questionRef = push(dbRef(db, `${ROOT}/submissions/${currentDetailSubmissionId}/questions`));
+  await set(questionRef, { type, text, options, createdAt: Date.now() });
+
+  if (msgEl) msgEl.textContent = "";
+  byId("questionTextInput").value = "";
+
+  // Refresh questions in modal
+  const snap = await get(dbRef(db, `${ROOT}/submissions/${currentDetailSubmissionId}/questions`));
+  renderQuestions(snap.exists() ? snap.val() : {});
+
+  // Update cache so question count reflects without full reload
+  const cached = submissionsCache.find((x) => x.id === currentDetailSubmissionId);
+  if (cached) {
+    cached.questions = snap.exists() ? snap.val() : {};
+    renderSubmissionRows();
+  }
+}
+
+async function deleteQuestion(questionId) {
+  if (!currentDetailSubmissionId) return;
+  await set(dbRef(db, `${ROOT}/submissions/${currentDetailSubmissionId}/questions/${questionId}`), null);
+  const snap = await get(dbRef(db, `${ROOT}/submissions/${currentDetailSubmissionId}/questions`));
+  renderQuestions(snap.exists() ? snap.val() : {});
+  const cached = submissionsCache.find((x) => x.id === currentDetailSubmissionId);
+  if (cached) {
+    cached.questions = snap.exists() ? snap.val() : {};
+    renderSubmissionRows();
+  }
+}
+
 function targetLabel(item) {
   if (item.targetMode === "specific_users") {
     const count = Array.isArray(item.targetUserIds) ? item.targetUserIds.length : 0;
@@ -947,14 +1091,24 @@ function renderSubmissionRows() {
     rows = rows.filter((item) => item.status === "pending");
   }
 
+  const isAdmin = normalizeRole(currentProfile?.role) === "admin";
+
   rows.forEach((item) => {
+    const qCount = item.questions ? Object.keys(item.questions).length : 0;
+    const qBadgeClass = qCount > 0 ? "q-count-badge has-questions" : "q-count-badge";
+    const qLabel = qCount > 0 ? `${qCount} question${qCount !== 1 ? "s" : ""}` : "0 questions";
+    const displayName = item.displayName || item.fileName || "-";
+
     const tr = document.createElement("tr");
+    tr.className = "clickable-row";
     tr.innerHTML = `
-      <td>${escapeHtml(item.fileName || "-")}</td>
-      <td>${escapeHtml(targetLabel(item))}</td>
+      <td><strong>${escapeHtml(displayName)}</strong><br><span class="muted" style="font-size:12px">${escapeHtml(item.fileName || "")}</span></td>
+      ${isAdmin ? `<td>${escapeHtml(item.businessName || item.businessId || "-")}</td>` : ""}
       <td><span class="status-pill status-${item.status || "pending"}">${escapeHtml(statusLabel(item))}</span></td>
+      <td><span class="${qBadgeClass}">${qLabel}</span></td>
       <td>${formatTs(item.createdAt)}</td>
     `;
+    tr.addEventListener("click", () => openModelDetail(item));
     mySubmissionsBody.appendChild(tr);
   });
 }
@@ -967,31 +1121,22 @@ function setAdminVisibility(isAdmin) {
 
 function setUploadUIForRole(isAdmin) {
   if (isAdmin) {
-    uploadSectionTitle.textContent = "Upload .glb model (Publish to app)";
-    mySubmissionsTitle.textContent = "Admin uploads";
-    uploadButton.textContent = "Upload and Publish";
+    if (uploadButton) uploadButton.textContent = "Upload and Publish";
     document.querySelectorAll(".partner-only").forEach((el) => {
       el.style.display = "none";
     });
-    targetModeInput.style.display = "";
-    targetUserIdsInput.style.display = "";
-    partnerSubscribersPanel.style.display = "none";
-    targetModeInput.value = "all_users";
-    targetModeInput.dispatchEvent(new Event("change"));
-    uploadMessage.textContent = "Admin uploads publish directly to app users.";
+    if (targetModeInput) { targetModeInput.style.display = ""; targetModeInput.value = "all_users"; targetModeInput.dispatchEvent(new Event("change")); }
+    if (targetUserIdsInput) targetUserIdsInput.style.display = "";
+    if (partnerSubscribersPanel) partnerSubscribersPanel.style.display = "none";
   } else {
-    uploadSectionTitle.textContent = "Upload .glb model (Submit for review)";
-    mySubmissionsTitle.textContent = "My submissions";
-    uploadButton.textContent = "Upload For Review";
+    if (uploadButton) uploadButton.textContent = "Upload For Review";
     document.querySelectorAll(".partner-only").forEach((el) => {
       el.style.display = "";
     });
-    partnerSubscribersPanel.style.display = "";
-    targetModeInput.value = "specific_users";
-    targetModeInput.style.display = "none";
-    targetUserIdsInput.style.display = "none";
-    partnerDeliveryMessage.textContent = "";
-    uploadMessage.textContent = "Partner uploads require admin approval before push.";
+    if (partnerSubscribersPanel) partnerSubscribersPanel.style.display = "";
+    if (targetModeInput) { targetModeInput.value = "specific_users"; targetModeInput.style.display = "none"; }
+    if (targetUserIdsInput) targetUserIdsInput.style.display = "none";
+    if (partnerDeliveryMessage) partnerDeliveryMessage.textContent = "";
   }
 }
 
