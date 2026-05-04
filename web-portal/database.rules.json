@@ -1,0 +1,66 @@
+﻿{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "cornucopia": {
+      "users": {
+        ".read": "auth != null",
+        "$uid": {
+          ".read": "auth != null",
+          ".write": "auth != null && (auth.uid === $uid || root.child('cornucopia/users').child(auth.uid).child('role').val() === 'admin')",
+          "models": {
+            ".read": "auth != null",
+            "$modelId": {
+              ".read": "auth != null",
+              ".write": "auth != null && (root.child('cornucopia/users').child(auth.uid).child('role').val() === 'admin' || root.child('cornucopia/users').child(auth.uid).child('role').val() === 'partner')"
+            }
+          }
+        }
+      },
+
+      "partners": {
+        ".read": "auth != null",
+        "$partnerUid": {
+          ".read": "auth != null && (auth.uid === $partnerUid || root.child('cornucopia/users').child(auth.uid).child('role').val() === 'admin')",
+          ".write": "auth != null && root.child('cornucopia/users').child(auth.uid).child('role').val() === 'admin'"
+        }
+      },
+
+      "models": {
+        ".read": "auth != null",
+        "$modelId": {
+          ".read": "auth != null",
+          ".write": "auth != null && root.child('cornucopia/users').child(auth.uid).child('role').val() === 'admin'"
+        }
+      },
+
+      "models_uploads": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        "$modelId": {
+          ".read": "auth != null",
+          ".write": "auth != null"
+        }
+      },
+
+      "submissions": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        "$submissionId": {
+          ".read": "auth != null",
+          ".write": "auth != null"
+        }
+      },
+
+      "events": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        "$eventId": {
+          ".read": "auth != null",
+          ".write": "auth != null"
+        }
+      }
+    }
+  }
+}

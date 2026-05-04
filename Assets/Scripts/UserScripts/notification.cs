@@ -31,6 +31,7 @@ public class notification : MonoBehaviour
     string[] nameArray;
     Button[] btnsArray;
     string[] modelName;
+    string[] storagePathArray;
     string[] ratingmod;
     string[] raintgmodarr;
     bool[] savedArray;
@@ -132,6 +133,7 @@ public class notification : MonoBehaviour
                       nameArray = new string[totalModels];
                       btnsArray = new Button[totalModels];
                       modelName = new string[totalModels];
+                      storagePathArray = new string[totalModels];
                       raintgmodarr = new string[totalModels];
                       foreach (DataSnapshot place in snapshot.Children)
                       {
@@ -178,6 +180,12 @@ public class notification : MonoBehaviour
                               questionArray[i] = m.question;
                               nameArray[i] = m.name;
                               modelName[i] = m.modelNamee;
+                              storagePathArray[i] = m.storagePath ?? "";
+
+                              // Attach button listener immediately — thumbnail is cosmetic only
+                              btnsArray[i] = objectArray[i].GetComponent<Button>();
+                              int x = i;
+                              btnsArray[i].onClick.AddListener(delegate { btnClicks(x); });
 
                               Debug.Log("name" + m.name);
                               i++;
@@ -204,12 +212,26 @@ public class notification : MonoBehaviour
         PlayerPrefs.SetString("modelQuestion", questionArray[value]);
         PlayerPrefs.SetString("productName", nameArray[value].Replace(".glb", ""));
         PlayerPrefs.SetString("modelName", modelName[value] + ".glb");
+        PlayerPrefs.SetString("modelStoragePath", storagePathArray[value]);
         PlayerPrefs.SetString("modRating", raintgmodarr[value]);
-            PlayerPrefs.SetInt("modelSaved", 0);
+        PlayerPrefs.SetInt("modelSaved", 0);
 
         Debug.Log("notification wala" + PlayerPrefs.GetInt("modelSaved"));
         SceneManager.LoadScene("NotifyModel");
     }
+    void SetCardImage(int index, string path)
+    {
+        if (objectArray == null || index >= objectArray.Length || objectArray[index] == null) return;
+        var tex = GetImage(path);
+        if (tex == null) return;
+        GameObject child = objectArray[index].transform.GetChild(0).gameObject;
+        var rawImage = child.GetComponent<UnityEngine.UI.RawImage>();
+        if (rawImage != null) rawImage.texture = tex;
+        GameObject textChild = objectArray[index].transform.GetChild(1).gameObject;
+        var tmp = textChild.GetComponent<TMPro.TMP_Text>();
+        if (tmp != null) tmp.text = nameArray[index].Replace(".glb", "");
+    }
+
     async System.Threading.Tasks.Task DownloadFileAsync()
     {
         for (int z = 0; z < i; z++)
@@ -220,34 +242,28 @@ public class notification : MonoBehaviour
 
             if (File.Exists(downloadPath))
             {
-
                 Debug.Log("Found the same file locally, Loading!!!");
-              
-                btnsArray[z] = objectArray[z].GetComponent<Button>();
-                int x = z;
-                btnsArray[z].onClick.AddListener(delegate { btnClicks(x); });
-
+                SetCardImage(z, downloadPath);
             }
-            else
+            else if (!string.IsNullOrEmpty(picArray[z]))
             {
                 StorageReference gsReference =
                  storage.GetReferenceFromUrl("gs://cornucopia-54b02.appspot.com/pics/" + picArray[z] + ".png");
 
-                // Download to the local filesystem
-                var task = gsReference.GetFileAsync(downloadPath).ContinueWithOnMainThread(task => {
+                int capturedZ = z;
+                string capturedPath = downloadPath;
+                var task = gsReference.GetFileAsync(capturedPath).ContinueWithOnMainThread(task => {
                     if (!task.IsFaulted && !task.IsCanceled)
                     {
-                        Debug.Log("File downloaded.");
-                        Debug.Log(downloadPath);
-                       
-                        btnsArray[z] = objectArray[z].GetComponent<Button>();
-                        int x = z;
-                        btnsArray[z].onClick.AddListener(delegate { btnClicks(x); });
+                        Debug.Log("Thumbnail downloaded: " + capturedPath);
+                        SetCardImage(capturedZ, capturedPath);
                     }
-
+                    else
+                    {
+                        Debug.Log("Thumbnail not found for " + picArray[capturedZ] + " — skipping.");
+                    }
                 });
                 await task;
-
             }
 
         }

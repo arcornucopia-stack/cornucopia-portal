@@ -6,7 +6,7 @@ namespace Cornucopia.Core.Interfaces
     {
         bool IsCached(string modelName);
         string GetCachedPath(string modelName);
-        Task<string> DownloadAndCache(string modelName);
+        Task<string> DownloadAndCache(string modelName, string storagePath = null);
         void ClearCache();
     }
 }

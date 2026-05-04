@@ -63,5 +63,6 @@ EditorBuildSettings:
     path: Assets/UX/Scenes/UXManagerScene.unity
     guid: 5d9539f4c7ee5c74c85a038c90cb6e1b
   m_configObjects:
+    UnityEditor.XR.ARCore.ARCoreSettings: {fileID: 11400000, guid: eb2868ec53afdb340aee3194f43463d0, type: 2}
     UnityEditor.XR.ARKit.ARKitSettings: {fileID: 11400000, guid: 764dfaef5c7577146b64924f66fb688d, type: 2}
     com.unity.xr.arfoundation.simulation_settings: {fileID: 11400000, guid: 575c1917591bac546a0f742bfb0b1b45, type: 2}

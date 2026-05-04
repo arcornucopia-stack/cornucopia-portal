@@ -33,6 +33,7 @@ public class allUserModel : MonoBehaviour
     string[] modelName;
     string[] ratingmod;
     string[] answer;
+    string[] storagePathArray;
     bool[] savedArray;
     bool check = false;
     public GameObject notifyimage;
@@ -134,6 +135,7 @@ public class allUserModel : MonoBehaviour
                       nameArray = new string[totalModels];
                       btnsArray = new Button[totalModels];
                       modelName = new string[totalModels];
+                      storagePathArray = new string[totalModels];
                       foreach (DataSnapshot place in snapshot.Children)
                       {
                           check = false;
@@ -176,6 +178,7 @@ public class allUserModel : MonoBehaviour
                               picArray[i] = m.picPathh;
                               nameArray[i] = m.name;
                               modelName[i] = m.modelNamee;
+                              storagePathArray[i] = m.storagePath ?? "";
 
                               Debug.Log("name" + m.name);
                               i++;
@@ -208,6 +211,7 @@ public class allUserModel : MonoBehaviour
         PlayerPrefs.SetString("picLocation", $"{Application.persistentDataPath}/Files/" + picArray[value] + ".png");
         PlayerPrefs.SetString("productName", nameArray[value].Replace(".glb", ""));
         PlayerPrefs.SetString("modelName", modelName[value] + ".glb");
+        PlayerPrefs.SetString("modelStoragePath", storagePathArray[value]);
         PlayerPrefs.SetString("modRating", ratingmod[value]);
         PlayerPrefs.SetString("givenAnswer", answer[value]);
         if (savedArray[value])

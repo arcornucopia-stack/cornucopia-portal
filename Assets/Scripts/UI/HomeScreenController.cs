@@ -226,12 +226,23 @@ namespace Cornucopia.UI
         public void OnScanClick()
         {
             Debug.Log("[HomeScreen] Opening AR Scanner");
+            string modelName = PlayerPrefs.GetString("modelName", "");
+            if (string.IsNullOrEmpty(modelName))
+            {
+                if (DialogUI.Instance != null)
+                {
+                    DialogUI.Instance
+                        .SetTitle("No Model Selected")
+                        .SetMessage("Go to Notifications to select a model to view in AR.")
+                        .SetButtonColor(DialogButtonColor.Blue)
+                        .Show();
+                }
+                return;
+            }
             if (Application.CanStreamedLevelBeLoaded(arCameraScene))
                 SceneManager.LoadScene(arCameraScene);
             else if (Application.CanStreamedLevelBeLoaded("UXManagerScene"))
                 SceneManager.LoadScene("UXManagerScene");
-            else
-                Debug.LogError($"[HomeScreen] AR scene not found. Tried '{arCameraScene}' and 'UXManagerScene'.");
         }
 
         /// <summary>
@@ -239,22 +250,7 @@ namespace Cornucopia.UI
         /// </summary>
         public void OnSearchRoomClick()
         {
-            Debug.Log("[HomeScreen] Opening Room Search");
-            // TODO: Navigate to room search scene when implemented
-            // SceneManager.LoadScene(searchRoomScene);
-
-            if (DialogUI.Instance != null)
-            {
-                DialogUI.Instance
-                    .SetTitle("Search Room")
-                    .SetMessage("Room scanning feature coming soon!")
-                    .SetButtonColor(DialogButtonColor.Blue)
-                    .Show();
-            }
-            else
-            {
-                Debug.LogWarning("[HomeScreen] DialogUI instance not found. Search Room feature is coming soon.");
-            }
+            Debug.Log("[HomeScreen] Search Room coming soon");
         }
 
         /// <summary>

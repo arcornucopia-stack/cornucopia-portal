@@ -26,8 +26,15 @@ namespace Cornucopia.Presentation.AR
 
         private async void Start()
         {
-            _repository = new CompositeProductRepository(new RealtimeDbProductRepository());
-            await LoadProducts();
+            try
+            {
+                _repository = new CompositeProductRepository(new RealtimeDbProductRepository());
+                await LoadProducts();
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"[ProductCarousel] Failed to load: {e.Message}");
+            }
         }
 
         private async System.Threading.Tasks.Task LoadProducts()
@@ -38,7 +45,12 @@ namespace Cornucopia.Presentation.AR
 
         private void PopulateCards()
         {
-            // Clear existing cards
+            if (cardPrefab == null || cardContainer == null)
+            {
+                Debug.LogWarning("[ProductCarousel] cardPrefab or cardContainer not assigned — skipping carousel.");
+                return;
+            }
+
             foreach (Transform child in cardContainer)
             {
                 Destroy(child.gameObject);

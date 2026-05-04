@@ -181,10 +181,10 @@ MonoBehaviour:
   searchRoomButton: {fileID: 2078072004}
   exploreButton: {fileID: 1182340578}
   collectiblesCountText: {fileID: 800085926}
-  newItemsCountText: {fileID: 0}
+  newItemsCountText: {fileID: 2092841420}
   notificationBadge: {fileID: 0}
   notificationCountText: {fileID: 2092841420}
-  arCameraScene: ARCamera
+  arCameraScene: UXManagerScene
   searchRoomScene: SearchRoom
   exploreScene: Collectibles
 --- !u!114 &23966046

@@ -35,7 +35,7 @@ namespace Cornucopia.Data.Cache
             return ImageHelper.GetModelCachePath(modelName);
         }
 
-        public async Task<string> DownloadAndCache(string modelName)
+        public async Task<string> DownloadAndCache(string modelName, string storagePath = null)
         {
             ImageHelper.EnsureCacheDirectory();
 
@@ -47,7 +47,11 @@ namespace Cornucopia.Data.Cache
                 return localPath;
             }
 
-            string storageUrl = FirebasePaths.StorageModelUrl(modelName);
+            // Use explicit storagePath (portal uploads) if available, otherwise fall back to legacy path
+            string storageUrl = !string.IsNullOrEmpty(storagePath)
+                ? $"{FirebasePaths.StorageBucket}/{storagePath}"
+                : FirebasePaths.StorageModelUrl(modelName);
+
             StorageReference gsRef = Storage.GetReferenceFromUrl(storageUrl);
 
             Debug.Log($"[ModelCache] Downloading {modelName} from {storageUrl}");

@@ -74,7 +74,7 @@ namespace Cornucopia.Presentation.AR
                     ? product.modelUrl
                     : product.name;
 
-                string localPath = await _cacheService.DownloadAndCache(modelFileName, product.storagePath);
+                string localPath = await _cacheService.DownloadAndCache(modelFileName);
                 LoadGLBModel(localPath);
             }
             catch (Exception e)

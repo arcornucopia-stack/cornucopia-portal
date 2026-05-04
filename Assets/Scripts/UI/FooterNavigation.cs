@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
+using UnityEngine.EventSystems;
 
 namespace Cornucopia.UI
 {
@@ -8,7 +9,7 @@ namespace Cornucopia.UI
     /// Manages the footer navigation bar with themed icons.
     /// Handles selection states and navigation between scenes.
     /// </summary>
-    public class FooterNavigation : MonoBehaviour
+    public class FooterNavigation : MonoBehaviour, IPointerClickHandler
     {
         [Header("Navigation Icons")]
         [SerializeField] private Image homeIcon;
@@ -50,8 +51,26 @@ namespace Cornucopia.UI
             else if (currentScene.Contains("Profile"))
                 _currentSelection = NavItem.Profile;
 
+            // Ensure footer image receives raycasts
+            var img = GetComponent<Image>();
+            if (img != null) img.raycastTarget = true;
+
             UpdateNavVisuals();
             UpdateNotificationBadge();
+        }
+
+        public void OnPointerClick(PointerEventData eventData)
+        {
+            var rt = GetComponent<RectTransform>();
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                rt, eventData.position, eventData.pressEventCamera, out Vector2 local);
+
+            float normalizedX = (local.x + rt.rect.width * 0.5f) / rt.rect.width;
+
+            if (normalizedX < 0.25f)       OnHomeClick();
+            else if (normalizedX < 0.5f)   OnNotificationClick();
+            else if (normalizedX < 0.75f)  OnCollectiblesClick();
+            else                           OnProfileClick();
         }
 
         /// <summary>

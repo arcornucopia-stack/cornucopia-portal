@@ -16,6 +16,7 @@ namespace Cornucopia.Core.Models
         public float price;
         public string modelUrl;
         public string thumbnailUrl;
+        public string storagePath;
         public bool surveyEnabled;
         public long createdAt;
 

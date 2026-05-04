@@ -71,14 +71,23 @@ public class PlaceObjectsOnPlane : MonoBehaviour
 
     void Awake()
     {
-        //capture.SetActive(false);
         m_RaycastManager = GetComponent<ARRaycastManager>();
-        userInterface.SetActive(false);
-        progressBar.SetActive(true);
-        url = "gs://cornucopia-54b02.appspot.com/model/" + PlayerPrefs.GetString("modelName");
-        filePath = $"{Application.persistentDataPath}/Files/models/"+ PlayerPrefs.GetString("modelName");
+        if (userInterface != null) userInterface.SetActive(false);
+        if (progressBar != null) progressBar.SetActive(true);
+
+        string modelName = PlayerPrefs.GetString("modelName");
+        string storagePath = PlayerPrefs.GetString("modelStoragePath", "");
+
+        if (!string.IsNullOrEmpty(storagePath))
+            url = "gs://cornucopia-54b02.appspot.com/" + storagePath;
+        else
+            url = "gs://cornucopia-54b02.appspot.com/model/" + modelName;
+
+        string dir = $"{Application.persistentDataPath}/Files/models/";
+        if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+        filePath = dir + modelName;
+
         DownloadFileAsync(url);
-       
     }
 
 
@@ -89,36 +98,44 @@ public class PlaceObjectsOnPlane : MonoBehaviour
 
         if (File.Exists(path))
         {
-            Debug.Log("Found the same file locally, Loading!!!");
-            userInterface.SetActive(true);
-            progressBar.SetActive(false);
-            LoadModel(path);
+            // Validate it's actually a GLB (magic bytes: "glTF")
+            byte[] header = new byte[4];
+            using (var fs = File.OpenRead(path)) fs.Read(header, 0, 4);
+            bool validGlb = header[0] == 0x67 && header[1] == 0x6C && header[2] == 0x54 && header[3] == 0x46;
 
-            return;
+            if (validGlb)
+            {
+                Debug.Log("Found valid cached file, Loading!!!");
+                if (userInterface != null) userInterface.SetActive(true);
+                if (progressBar != null) progressBar.SetActive(false);
+                LoadModel(path);
+                return;
+            }
+            else
+            {
+                Debug.LogWarning("[PlaceObjects] Cached file is invalid, re-downloading.");
+                File.Delete(path);
+            }
         }
         FirebaseStorage storage = FirebaseStorage.DefaultInstance;
         StorageReference gsReference =storage.GetReferenceFromUrl(url);
         
 
         // Start downloading a file
-        Task task = gsReference.GetFileAsync(path,
-            new StorageProgress<DownloadState>(state => {
-        // called periodically during the download
-        Debug.Log(String.Format(
-                    "Progress: {0} of {1} bytes transferred.",
-                    state.BytesTransferred,
-                    state.TotalByteCount
-                ));
-                pb.BarValue = (int)(Convert.ToDouble(state.BytesTransferred) / Convert.ToDouble(state.TotalByteCount) * 100);
-            }), CancellationToken.None);
+        Task task = gsReference.GetFileAsync(path, null, CancellationToken.None);
 
         task.ContinueWithOnMainThread(resultTask => {
             if (!resultTask.IsFaulted && !resultTask.IsCanceled)
             {
-                progressBar.SetActive(false);
-                userInterface.SetActive(true);
+                if (progressBar != null) progressBar.SetActive(false);
+                if (userInterface != null) userInterface.SetActive(true);
                 Debug.Log("Download finished.");
                 LoadModel(path);
+            }
+            else
+            {
+                Debug.LogError("[PlaceObjects] Download failed: " + (resultTask.Exception?.Message ?? "unknown"));
+                if (progressBar != null) progressBar.SetActive(false);
             }
         });
    
@@ -126,12 +143,14 @@ public class PlaceObjectsOnPlane : MonoBehaviour
     void LoadModel(string path)
     {
         AnimationClip[] animClips;
-     //   errors.text = "abc";
         GameObject model = Importer.LoadFromFile(path, new ImportSettings(), out animClips);
-     //   errors.text ="aaaa"+ model.name;
-        model.transform.SetParent(m_PlacedPrefab.transform);
-       // mp = m_PlacedPrefab;
-       
+        if (model == null)
+        {
+            Debug.LogError("[PlaceObjects] Failed to import GLB from: " + path);
+            return;
+        }
+        if (m_PlacedPrefab != null)
+            model.transform.SetParent(m_PlacedPrefab.transform);
     }
     void OnFinishAsync(GameObject result)
     {

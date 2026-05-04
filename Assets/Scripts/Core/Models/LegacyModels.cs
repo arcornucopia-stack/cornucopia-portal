@@ -18,6 +18,7 @@ namespace Cornucopia.Core.Models
         public string modelNamee;
         public string picPathh;
         public string question;
+        public string storagePath;
 
         public LegacyModel() { }
 
