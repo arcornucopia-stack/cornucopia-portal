@@ -125,6 +125,12 @@ targetModeInput?.addEventListener("change", () => {
   if (targetUserIdsInput) targetUserIdsInput.style.display = isSpecific ? "block" : "none";
 });
 
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if (!byId("modelDetailModal")?.classList.contains("hidden")) closeModelDetail();
+  else if (!byId("uploadModal")?.classList.contains("hidden")) closeUploadModal();
+});
+
 function bindModals() {
   // Upload modal
   byId("openUploadModal")?.addEventListener("click", () => {
@@ -905,6 +911,9 @@ async function getAllSubmissions() {
 }
 
 function openModelDetail(item) {
+  if (!item?.id) return;
+  // Don't open if upload modal is already open
+  if (!byId("uploadModal")?.classList.contains("hidden")) return;
   currentDetailSubmissionId = item.id;
   const title = item.displayName || item.fileName || "Model";
   byId("modelDetailTitle").textContent = title;
