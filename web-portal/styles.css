@@ -528,6 +528,43 @@ tr:last-child td { border-bottom: none; }
 
 .q-count-badge.has-questions { background: #dcfce7; color: #166534; }
 
+/* Disabled action buttons */
+button[disabled] {
+  opacity: 0.35;
+  cursor: not-allowed;
+  filter: none;
+  pointer-events: none;
+}
+
+/* Select all row */
+.select-all-row {
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 4px;
+  padding-bottom: 6px;
+}
+
+/* Toast notification */
+.toast {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #0c7c59;
+  color: #fff;
+  padding: 14px 24px;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 15px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.18);
+  z-index: 200;
+  max-width: 480px;
+  text-align: center;
+  transition: opacity 0.3s;
+}
+
+.toast.toast-error { background: var(--bad); }
+.toast.hidden { display: none; }
+
 @media (max-width: 900px) {
   .shell { grid-template-columns: 1fr; }
   .sidebar { display: flex; gap: 8px; overflow-x: auto; }

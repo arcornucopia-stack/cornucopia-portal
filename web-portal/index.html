@@ -15,8 +15,8 @@
       <div class="brand">Cornucopia</div>
       <div id="sidebarCompany" class="sidebar-company hidden"></div>
       <button class="nav-btn active" data-screen="dashboard">Dashboard</button>
-      <button class="nav-btn" data-screen="uploads">Uploads</button>
-      <button class="nav-btn admin-only" data-screen="approvals">Approvals</button>
+      <button class="nav-btn" data-screen="uploads">My Uploads</button>
+      <button class="nav-btn admin-only" data-screen="approvals">Manage Uploads</button>
       <button class="nav-btn" id="logoutButton">Sign out</button>
     </aside>
 
@@ -52,12 +52,12 @@
               <p id="approvedUploads">0</p>
               <span class="metric-hint">Show approved only</span>
             </button>
-            <button class="card metric-card" id="cardOpenCount" type="button">
+            <button class="card metric-card partner-metric" id="cardOpenCount" type="button">
               <h3>Opens</h3>
               <p id="openCount">0</p>
               <span class="metric-hint">Engagement signals</span>
             </button>
-            <button class="card metric-card" id="cardSaveCount" type="button">
+            <button class="card metric-card partner-metric" id="cardSaveCount" type="button">
               <h3>Saves</h3>
               <p id="saveCount">0</p>
               <span class="metric-hint">Saved interactions</span>
@@ -145,7 +145,7 @@
         </section>
 
         <section id="approvals" class="screen admin-only">
-          <h3>Approval Queue</h3>
+          <h3>Pending Tasks</h3>
           <table>
             <thead>
               <tr><th>Business</th><th>File</th><th>Target</th><th>Status</th><th>Date</th><th>Actions</th></tr>
@@ -243,6 +243,9 @@
       </div>
     </div>
   </div>
+
+  <!-- Toast notification -->
+  <div id="toastNotification" class="toast hidden"></div>
 
   <script src="./firebase-config.js"></script>
   <script type="module" src="./app.js"></script>

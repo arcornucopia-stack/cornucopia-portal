@@ -169,6 +169,33 @@ function bindModals() {
   byId("doneModelDetail")?.addEventListener("click", closeModelDetail);
 }
 
+function addSelectAll(listEl) {
+  const checkboxes = listEl.querySelectorAll("input[type='checkbox']");
+  if (!checkboxes.length) return;
+  const wrapper = document.createElement("label");
+  wrapper.className = "user-row select-all-row";
+  wrapper.innerHTML = `<input type="checkbox" class="select-all-cb" /> <span><strong>Select all</strong></span>`;
+  listEl.prepend(wrapper);
+  const cb = wrapper.querySelector(".select-all-cb");
+  cb.addEventListener("change", () => {
+    listEl.querySelectorAll("input[type='checkbox']:not(.select-all-cb)").forEach((x) => { x.checked = cb.checked; });
+  });
+  checkboxes.forEach((x) => x.addEventListener("change", () => {
+    const all = [...listEl.querySelectorAll("input[type='checkbox']:not(.select-all-cb)")];
+    cb.checked = all.every((c) => c.checked);
+    cb.indeterminate = !cb.checked && all.some((c) => c.checked);
+  }));
+}
+
+function showToast(message, type = "success") {
+  const toast = byId("toastNotification");
+  if (!toast) return;
+  toast.textContent = message;
+  toast.className = `toast toast-${type}`;
+  toast.classList.remove("hidden");
+  setTimeout(() => toast.classList.add("hidden"), 5000);
+}
+
 function closeUploadModal() {
   byId("uploadModal")?.classList.add("hidden");
   if (uploadProgress) uploadProgress.value = 0;
@@ -345,6 +372,12 @@ async function uploadModel() {
         }
 
         closeUploadModal();
+        const isAdminUpload = normalizeRole(currentProfile.role) === "admin";
+        showToast(
+          isAdminUpload
+            ? "🎉 Model uploaded and published to the app!"
+            : "🎉 Model uploaded successfully! Our team will review it shortly."
+        );
         await refreshAll();
       } catch (err) {
         uploadMessage.textContent = `Upload completed but publish step failed: ${err.message || err}`;
@@ -390,20 +423,27 @@ async function loadApprovalQueue() {
     all.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
     all.forEach((item) => {
-      const canPush = item.status !== "rejected" && !item.pushedToApp;
+      const approved = item.status === "approved";
+      const rejected = item.status === "rejected";
+      const pushed = !!item.pushedToApp;
 
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${escapeHtml(item.businessName || item.businessId || "-")}</td>
-        <td>${escapeHtml(item.fileName || "-")}</td>
+        <td>${escapeHtml(item.displayName || item.fileName || "-")}</td>
         <td>${escapeHtml(targetLabel(item))}</td>
         <td><span class="status-pill status-${item.status || "pending"}">${escapeHtml(statusLabel(item))}</span></td>
         <td>${formatTs(item.createdAt)}</td>
         <td>
           <div class="row-actions">
-            <button class="secondary" data-id="${item.id}" data-action="approve">Approve</button>
-            <button class="danger" data-id="${item.id}" data-action="reject">Reject</button>
-            ${canPush ? `<button class="success" data-id="${item.id}" data-action="push">Push to App</button>` : ""}
+            <button class="secondary" data-id="${item.id}" data-action="approve"
+              ${approved || rejected ? "disabled" : ""}>Approve</button>
+            <button class="danger" data-id="${item.id}" data-action="reject"
+              ${approved || rejected ? "disabled" : ""}>Reject</button>
+            <button class="success" data-id="${item.id}" data-action="push"
+              ${!approved || pushed ? "disabled" : ""}>
+              ${pushed ? "Pushed ✓" : "Push to App"}
+            </button>
           </div>
         </td>
       `;
@@ -415,16 +455,41 @@ async function loadApprovalQueue() {
         const id = btn.getAttribute("data-id");
         const action = btn.getAttribute("data-action");
 
-        if (action === "approve") {
-          await updateSubmissionStatus(id, "approved");
-        } else if (action === "reject") {
-          if (!confirm("Reject this submission? This cannot be undone.")) return;
-          await updateSubmissionStatus(id, "rejected");
-        } else if (action === "push") {
-          await pushSubmissionToApp(id);
-        }
+        const confirmMessages = {
+          approve: "Approve this submission and make it ready to push?",
+          reject: "Reject this submission? This cannot be undone.",
+          push: "Push this model to the app for users to see?"
+        };
+        const loadingLabels = { approve: "Approving…", reject: "Rejecting…", push: "Pushing to app…" };
+        const successMessages = {
+          approve: "✓ Submission approved.",
+          reject: "✓ Submission rejected.",
+          push: "🚀 Model pushed to the app!"
+        };
 
-        await refreshAll();
+        if (!confirm(confirmMessages[action])) return;
+
+        const originalText = btn.textContent.trim();
+        btn.textContent = loadingLabels[action];
+        btn.disabled = true;
+        const allBtns = btn.closest(".row-actions")?.querySelectorAll("button");
+        allBtns?.forEach((b) => { b.disabled = true; });
+
+        try {
+          if (action === "approve") {
+            await updateSubmissionStatus(id, "approved");
+          } else if (action === "reject") {
+            await updateSubmissionStatus(id, "rejected");
+          } else if (action === "push") {
+            await pushSubmissionToApp(id);
+          }
+          showToast(successMessages[action]);
+          await refreshAll();
+        } catch (err) {
+          showToast(`Action failed: ${err.message || err}`, "error");
+          btn.textContent = originalText;
+          allBtns?.forEach((b) => { b.disabled = false; });
+        }
       });
     });
   } catch (err) {
@@ -673,6 +738,8 @@ async function loadDispatchData() {
 
     if (!dispatchUsersList.children.length) {
       dispatchUsersList.innerHTML = "<div class='muted'>No end-users found (non-admin/non-partner).</div>";
+    } else {
+      addSelectAll(dispatchUsersList);
     }
   } catch (err) {
     dispatchMessage.textContent = `Could not load users/models for delivery: ${err.message || err}`;
@@ -876,6 +943,8 @@ async function loadPartnerDeliveryData() {
 
     if (!partnerDeliveryUsersList.children.length) {
       partnerDeliveryUsersList.innerHTML = "<div class='muted'>No users available yet.</div>";
+    } else {
+      addSelectAll(partnerDeliveryUsersList);
     }
   } catch (err) {
     partnerDeliveryMessage.textContent = `Could not load partner delivery data: ${err.message || err}`;
@@ -1146,6 +1215,9 @@ function renderSubmissionRows() {
 function setAdminVisibility(isAdmin) {
   document.querySelectorAll(".admin-only").forEach((el) => {
     el.style.display = isAdmin ? "" : "none";
+  });
+  document.querySelectorAll(".partner-metric").forEach((el) => {
+    el.style.display = isAdmin ? "none" : "";
   });
 }
 
