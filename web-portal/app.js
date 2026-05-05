@@ -164,6 +164,9 @@ function bindModals() {
 
   // Add question
   byId("addQuestionButton")?.addEventListener("click", addQuestionToModel);
+
+  // Done button closes model detail
+  byId("doneModelDetail")?.addEventListener("click", closeModelDetail);
 }
 
 function closeUploadModal() {
@@ -180,7 +183,7 @@ function closeModelDetail() {
   byId("modelDetailModal")?.classList.add("hidden");
   currentDetailSubmissionId = null;
 }
-targetModeInput.dispatchEvent(new Event("change"));
+targetModeInput?.dispatchEvent(new Event("change"));
 
 onAuthStateChanged(auth, async (user) => {
   currentUser = user;
@@ -415,6 +418,7 @@ async function loadApprovalQueue() {
         if (action === "approve") {
           await updateSubmissionStatus(id, "approved");
         } else if (action === "reject") {
+          if (!confirm("Reject this submission? This cannot be undone.")) return;
           await updateSubmissionStatus(id, "rejected");
         } else if (action === "push") {
           await pushSubmissionToApp(id);
@@ -530,7 +534,7 @@ async function pushSubmissionToApp(submissionId, options = {}) {
         return role !== "admin" && role !== "partner";
       });
       if (targetUserIds.length === 0) {
-        targetUserIds = allUserIds;
+        assignmentError = "No end-users found to send to.";
       }
     }
 
@@ -915,14 +919,21 @@ async function getAllSubmissions() {
 
 function openModelDetail(item) {
   if (!item?.id) return;
+  // Close any other open modal first
+  closeUploadModal();
   currentDetailSubmissionId = item.id;
   const title = item.displayName || item.fileName || "Model";
-  byId("modelDetailTitle").textContent = title;
-  byId("modelDetailMeta").textContent = `Status: ${statusLabel(item)} · Uploaded ${formatTs(item.createdAt)}`;
+  const titleEl = byId("modelDetailTitle");
+  const metaEl = byId("modelDetailMeta");
+  const textEl = byId("questionTextInput");
+  const msgEl = byId("questionMessage");
+  const typeEl = byId("questionTypeSelect");
+  if (titleEl) titleEl.textContent = title;
+  if (metaEl) metaEl.textContent = `Status: ${statusLabel(item)} · Uploaded ${formatTs(item.createdAt)}`;
   renderQuestions(item.questions || {});
-  byId("questionTextInput").value = "";
-  byId("questionMessage").textContent = "";
-  byId("questionTypeSelect").value = "yes_no";
+  if (textEl) textEl.value = "";
+  if (msgEl) msgEl.textContent = "";
+  if (typeEl) typeEl.value = "yes_no";
   byId("mcOptionsContainer")?.classList.add("hidden");
   byId("modelDetailModal")?.classList.remove("hidden");
 }
@@ -966,7 +977,7 @@ async function addQuestionToModel() {
 
   let options = [];
   if (type === "multiple_choice") {
-    options = [...document.querySelectorAll(".mc-option")]
+    options = [...(byId("mcOptionsList")?.querySelectorAll(".mc-option") || [])]
       .map((el) => el.value.trim())
       .filter(Boolean);
     if (options.length < 2) { if (msgEl) msgEl.textContent = "Add at least 2 options."; return; }
@@ -992,13 +1003,18 @@ async function addQuestionToModel() {
 
 async function deleteQuestion(questionId) {
   if (!currentDetailSubmissionId) return;
-  await set(dbRef(db, `${ROOT}/submissions/${currentDetailSubmissionId}/questions/${questionId}`), null);
-  const snap = await get(dbRef(db, `${ROOT}/submissions/${currentDetailSubmissionId}/questions`));
-  renderQuestions(snap.exists() ? snap.val() : {});
-  const cached = submissionsCache.find((x) => x.id === currentDetailSubmissionId);
-  if (cached) {
-    cached.questions = snap.exists() ? snap.val() : {};
-    renderSubmissionRows();
+  try {
+    await set(dbRef(db, `${ROOT}/submissions/${currentDetailSubmissionId}/questions/${questionId}`), null);
+    const snap = await get(dbRef(db, `${ROOT}/submissions/${currentDetailSubmissionId}/questions`));
+    renderQuestions(snap.exists() ? snap.val() : {});
+    const cached = submissionsCache.find((x) => x.id === currentDetailSubmissionId);
+    if (cached) {
+      cached.questions = snap.exists() ? snap.val() : {};
+      renderSubmissionRows();
+    }
+  } catch (err) {
+    const msgEl = byId("questionMessage");
+    if (msgEl) msgEl.textContent = `Could not delete question: ${err.message || err}`;
   }
 }
 
@@ -1115,9 +1131,10 @@ function renderSubmissionRows() {
       ${isAdmin ? `<td>${escapeHtml(item.businessName || item.businessId || "-")}</td>` : ""}
       <td><span class="status-pill status-${item.status || "pending"}">${escapeHtml(statusLabel(item))}</span></td>
       <td>
-        <button class="manage-questions-btn" type="button">
+        <div class="q-cell">
           <span class="${qBadgeClass}">${qLabel}</span>
-        </button>
+          <button class="manage-questions-btn" type="button">✏ Edit</button>
+        </div>
       </td>
       <td>${formatTs(item.createdAt)}</td>
     `;
@@ -1138,7 +1155,7 @@ function setUploadUIForRole(isAdmin) {
     document.querySelectorAll(".partner-only").forEach((el) => {
       el.style.display = "none";
     });
-    if (targetModeInput) { targetModeInput.style.display = ""; targetModeInput.value = "all_users"; targetModeInput.dispatchEvent(new Event("change")); }
+    if (targetModeInput) { targetModeInput.style.display = ""; targetModeInput.value = "all_users"; targetModeInput?.dispatchEvent(new Event("change")); }
     if (targetUserIdsInput) targetUserIdsInput.style.display = "";
     if (partnerSubscribersPanel) partnerSubscribersPanel.style.display = "none";
   } else {
