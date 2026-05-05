@@ -171,6 +171,8 @@ function closeUploadModal() {
   if (uploadProgress) uploadProgress.value = 0;
   if (uploadMessage) uploadMessage.textContent = "";
   if (displayNameInput) displayNameInput.value = "";
+  const descInput = byId("modelDescriptionInput");
+  if (descInput) descInput.value = "";
   if (glbInput) glbInput.value = "";
 }
 
@@ -304,6 +306,7 @@ async function uploadModel() {
           uploaderRole: currentProfile.role || "partner",
           fileName: file.name,
           displayName: (displayNameInput?.value || baseName).trim(),
+          description: (byId("modelDescriptionInput")?.value || "").trim(),
           question: "",
           picPathh: sanitizeKey(baseName),
           storagePath,
