@@ -1443,7 +1443,7 @@ MonoBehaviour:
   capture: {fileID: 250062276}
   mtitleText: {fileID: 171315274}
   m_HomeSceneName: Home
-  m_ShowDebugBackButton: 1
+  m_ShowDebugBackButton: 0
   m_MaxNumberOfObjectsToPlace: 1
   m_CanReposition: 0
 --- !u!114 &1335839540

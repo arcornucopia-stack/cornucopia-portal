@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "mcp-unity": {
+      "command": "node",
+      "args": [
+        "C:/Users/ekuff/Dropbox/Cornucopia/Cornucopia/Cornucopia/Library/PackageCache/com.gamelovers.mcp-unity@4c24251eb7/Server~/build/index.js"
+      ]
+    }
+  }
+}

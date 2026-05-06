@@ -142,15 +142,24 @@ public class PlaceObjectsOnPlane : MonoBehaviour
     }
     void LoadModel(string path)
     {
-        AnimationClip[] animClips;
-        GameObject model = Importer.LoadFromFile(path, new ImportSettings(), out animClips);
-        if (model == null)
+        try
         {
-            Debug.LogError("[PlaceObjects] Failed to import GLB from: " + path);
-            return;
+            AnimationClip[] animClips;
+            GameObject model = Importer.LoadFromFile(path, new ImportSettings(), out animClips);
+            if (model == null)
+            {
+                Debug.LogError("[PlaceObjects] Importer returned null for: " + path);
+                return;
+            }
+            if (m_PlacedPrefab != null)
+                model.transform.SetParent(m_PlacedPrefab.transform);
+            Debug.Log("[PlaceObjects] Model loaded successfully: " + path);
         }
-        if (m_PlacedPrefab != null)
-            model.transform.SetParent(m_PlacedPrefab.transform);
+        catch (Exception e)
+        {
+            Debug.LogError("[PlaceObjects] Exception loading GLB — file may be corrupt. Deleting cache. " + e.Message);
+            if (File.Exists(path)) File.Delete(path);
+        }
     }
     void OnFinishAsync(GameObject result)
     {
