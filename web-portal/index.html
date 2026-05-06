@@ -244,6 +244,31 @@
     </div>
   </div>
 
+  <!-- Model Details (Attributes) Modal -->
+  <div id="detailsModal" class="modal-overlay hidden">
+    <div class="modal-panel modal-large">
+      <div class="modal-header">
+        <div>
+          <h3 id="detailsTitle">Model Details</h3>
+          <p class="muted" style="margin:2px 0 0">Add attributes to describe this model.</p>
+        </div>
+        <button id="closeDetails" class="icon-btn" type="button">✕</button>
+      </div>
+      <div class="modal-body">
+        <table class="attributes-table">
+          <thead>
+            <tr><th>Attribute</th><th>Value</th><th></th></tr>
+          </thead>
+          <tbody id="attributesBody"></tbody>
+        </table>
+        <button id="addAttributeRow" type="button" class="secondary" style="margin-top:10px">+ Add row</button>
+      </div>
+      <div class="modal-footer">
+        <button id="saveDetails" type="button" class="btn-done">Save Details</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Model Analytics Modal -->
   <div id="analyticsModal" class="modal-overlay hidden">
     <div class="modal-panel modal-large">

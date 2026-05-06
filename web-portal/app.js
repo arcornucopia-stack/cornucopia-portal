@@ -131,6 +131,7 @@ targetModeInput?.addEventListener("change", () => {
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   if (!byId("analyticsModal")?.classList.contains("hidden")) closeAnalytics();
+  else if (!byId("detailsModal")?.classList.contains("hidden")) closeDetailsModal();
   else if (!byId("modelDetailModal")?.classList.contains("hidden")) closeModelDetail();
   else if (!byId("uploadModal")?.classList.contains("hidden")) closeUploadModal();
 });
@@ -177,10 +178,23 @@ function bindModals() {
   byId("analyticsModal")?.addEventListener("click", (e) => {
     if (e.target === byId("analyticsModal")) closeAnalytics();
   });
+
+  // Details modal
+  byId("closeDetails")?.addEventListener("click", closeDetailsModal);
+  byId("detailsModal")?.addEventListener("click", (e) => {
+    if (e.target === byId("detailsModal")) closeDetailsModal();
+  });
+  byId("addAttributeRow")?.addEventListener("click", addAttributeRow);
+  byId("saveDetails")?.addEventListener("click", saveModelDetails);
 }
 
 function closeAnalytics() {
   byId("analyticsModal")?.classList.add("hidden");
+}
+
+function closeDetailsModal() {
+  byId("detailsModal")?.classList.add("hidden");
+  _detailsSubmissionId = null;
 }
 
 function addSelectAll(listEl) {
@@ -1008,6 +1022,66 @@ async function getAllSubmissions() {
   return Object.entries(raw).map(([id, value]) => ({ id, ...value }));
 }
 
+let _detailsSubmissionId = null;
+
+function openModelDetailsEditor(item) {
+  if (!item?.id) return;
+  _detailsSubmissionId = item.id;
+  const title = item.displayName || item.fileName || "Model";
+  const titleEl = byId("detailsTitle");
+  if (titleEl) titleEl.textContent = `${title} — Details`;
+  const tbody = byId("attributesBody");
+  if (!tbody) return;
+  tbody.innerHTML = "";
+  const existing = item.attributes || {};
+  const entries = typeof existing === "object" ? Object.entries(existing) : [];
+  if (entries.length) {
+    entries.forEach(([attr, val]) => addAttributeRow(attr, val));
+  } else {
+    addAttributeRow("", "");
+  }
+  byId("detailsModal")?.classList.remove("hidden");
+}
+
+function addAttributeRow(attr = "", val = "") {
+  const tbody = byId("attributesBody");
+  if (!tbody) return;
+  const tr = document.createElement("tr");
+  tr.innerHTML = `
+    <td><input class="attr-input attr-key" placeholder="e.g. Colour" value="${escapeHtml(String(attr))}" /></td>
+    <td><input class="attr-input attr-val" placeholder="e.g. Red" value="${escapeHtml(String(val))}" /></td>
+    <td><button class="delete-attr-btn" type="button" title="Remove row">✕</button></td>
+  `;
+  tr.querySelector(".delete-attr-btn").addEventListener("click", () => tr.remove());
+  tbody.appendChild(tr);
+}
+
+async function saveModelDetails() {
+  if (!_detailsSubmissionId) return;
+  const tbody = byId("attributesBody");
+  const saveBtn = byId("saveDetails");
+  if (!tbody) return;
+  const rows = [...tbody.querySelectorAll("tr")];
+  const attributes = {};
+  rows.forEach((row) => {
+    const key = row.querySelector(".attr-key")?.value.trim();
+    const val = row.querySelector(".attr-val")?.value.trim();
+    if (key) attributes[key] = val || "";
+  });
+  if (saveBtn) { saveBtn.textContent = "Saving…"; saveBtn.disabled = true; }
+  try {
+    await set(dbRef(db, `${ROOT}/submissions/${_detailsSubmissionId}/attributes`), attributes);
+    const cached = submissionsCache.find((x) => x.id === _detailsSubmissionId);
+    if (cached) cached.attributes = attributes;
+    showToast("✓ Details saved.");
+    closeDetailsModal();
+  } catch (err) {
+    showToast(`Could not save: ${err.message || err}`, "error");
+  } finally {
+    if (saveBtn) { saveBtn.textContent = "Save Details"; saveBtn.disabled = false; }
+  }
+}
+
 async function openModelAnalytics(item) {
   if (!item?.id) return;
   const title = item.displayName || item.fileName || "Model";
@@ -1273,10 +1347,13 @@ function renderSubmissionRows() {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>
-        <button class="model-name-link" data-analytics="true">
-          <strong>${escapeHtml(displayName)}</strong><br>
-          <span class="muted" style="font-size:12px">${escapeHtml(item.fileName || "")}</span>
-        </button>
+        <div style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap">
+          <button class="model-name-link" data-analytics="true">
+            <strong>${escapeHtml(displayName)}</strong><br>
+            <span class="muted" style="font-size:12px">${escapeHtml(item.fileName || "")}</span>
+          </button>
+          <button class="model-details-btn" type="button" title="Edit model details">Details</button>
+        </div>
       </td>
       ${isAdmin ? `<td>${escapeHtml(item.businessName || item.businessId || "-")}</td>` : ""}
       <td><span class="status-pill status-${item.status || "pending"}">${escapeHtml(statusLabel(item))}</span></td>
@@ -1290,6 +1367,7 @@ function renderSubmissionRows() {
     `;
     tr.querySelector(".manage-questions-btn").addEventListener("click", () => openModelDetail(item));
     tr.querySelector("[data-analytics]").addEventListener("click", () => openModelAnalytics(item));
+    tr.querySelector(".model-details-btn").addEventListener("click", () => openModelDetailsEditor(item));
     mySubmissionsBody.appendChild(tr);
   });
 }
