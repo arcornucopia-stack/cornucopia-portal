@@ -592,6 +592,116 @@ button[disabled] {
 .toast.toast-error { background: var(--bad); }
 .toast.hidden { display: none; }
 
+/* Analytics modal */
+.analytics-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.analytics-stat {
+  background: #f4faf7;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px 12px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.analytics-stat-value {
+  font-size: 32px;
+  font-weight: 800;
+  font-family: Space Grotesk, sans-serif;
+  color: var(--brand);
+  line-height: 1;
+}
+
+.analytics-stat-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--soft);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.analytics-section { margin-bottom: 20px; }
+
+.analytics-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--soft);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0 0 10px;
+}
+
+.vote-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.vote-bar-track {
+  flex: 1;
+  height: 14px;
+  background: #e5ede9;
+  border-radius: 999px;
+  overflow: hidden;
+  display: flex;
+}
+
+.vote-bar-yes {
+  background: var(--brand);
+  height: 100%;
+  transition: width 0.6s ease;
+}
+
+.vote-bar-no {
+  background: var(--bad);
+  height: 100%;
+  transition: width 0.6s ease;
+}
+
+.vote-label {
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  min-width: 56px;
+}
+
+.yes-label { color: var(--brand); text-align: right; }
+.no-label { color: var(--bad); }
+
+.rating-display {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.rating-value {
+  font-size: 36px;
+  font-weight: 800;
+  font-family: Space Grotesk, sans-serif;
+  color: var(--warn);
+}
+
+.rating-stars { font-size: 20px; letter-spacing: 2px; }
+
+.model-name-link {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+}
+
+.model-name-link:hover strong { text-decoration: underline; color: var(--brand); }
+
 @media (max-width: 900px) {
   .shell { grid-template-columns: 1fr; }
   .sidebar { display: flex; gap: 8px; overflow-x: auto; }

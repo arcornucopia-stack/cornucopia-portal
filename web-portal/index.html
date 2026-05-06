@@ -244,6 +244,63 @@
     </div>
   </div>
 
+  <!-- Model Analytics Modal -->
+  <div id="analyticsModal" class="modal-overlay hidden">
+    <div class="modal-panel modal-large">
+      <div class="modal-header">
+        <div>
+          <h3 id="analyticsTitle">Model Analytics</h3>
+          <p id="analyticsMeta" class="muted" style="margin:2px 0 0"></p>
+        </div>
+        <button id="closeAnalytics" class="icon-btn" type="button">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="analyticsLoading" class="muted" style="text-align:center;padding:20px">Loading…</div>
+        <div id="analyticsContent" class="hidden">
+          <div class="analytics-stats">
+            <div class="analytics-stat">
+              <span class="analytics-stat-value" id="statSent">—</span>
+              <span class="analytics-stat-label">Sent to</span>
+            </div>
+            <div class="analytics-stat">
+              <span class="analytics-stat-value" id="statOpens">—</span>
+              <span class="analytics-stat-label">Opens</span>
+            </div>
+            <div class="analytics-stat">
+              <span class="analytics-stat-value" id="statSaves">—</span>
+              <span class="analytics-stat-label">Saves</span>
+            </div>
+            <div class="analytics-stat">
+              <span class="analytics-stat-value" id="statResponseRate">—</span>
+              <span class="analytics-stat-label">Response rate</span>
+            </div>
+          </div>
+
+          <div class="analytics-section">
+            <h4 class="analytics-section-title">Audience Response</h4>
+            <div class="vote-bar-row">
+              <span class="vote-label yes-label" id="statYesLabel">0 Yes</span>
+              <div class="vote-bar-track">
+                <div class="vote-bar-yes" id="voteBarYes"></div>
+                <div class="vote-bar-no" id="voteBarNo"></div>
+              </div>
+              <span class="vote-label no-label" id="statNoLabel">0 No</span>
+            </div>
+          </div>
+
+          <div class="analytics-section">
+            <h4 class="analytics-section-title">Rating</h4>
+            <div class="rating-display">
+              <span class="rating-value" id="statRating">—</span>
+              <span class="rating-stars" id="statStars"></span>
+              <span class="muted" style="font-size:13px"> / 5.0</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast notification -->
   <div id="toastNotification" class="toast hidden"></div>
 

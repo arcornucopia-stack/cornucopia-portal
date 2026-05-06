@@ -118,6 +118,7 @@ byId("cardTotalUploads")?.addEventListener("click", () => { setActiveScreen("upl
 byId("cardApprovedUploads")?.addEventListener("click", () => { setActiveScreen("uploads"); setSubmissionFilter("approved"); });
 byId("cardOpenCount")?.addEventListener("click", () => { setActiveScreen("uploads"); setSubmissionFilter("all"); });
 byId("cardSaveCount")?.addEventListener("click", () => { setActiveScreen("uploads"); setSubmissionFilter("all"); });
+// Clicking Opens/Saves hint text is handled in the card — both go to uploads so user can click a model for analytics
 filterAllSubmissions?.addEventListener("click", () => setSubmissionFilter("all"));
 filterApprovedSubmissions?.addEventListener("click", () => setSubmissionFilter("approved"));
 filterPendingSubmissions?.addEventListener("click", () => setSubmissionFilter("pending"));
@@ -129,7 +130,8 @@ targetModeInput?.addEventListener("change", () => {
 
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
-  if (!byId("modelDetailModal")?.classList.contains("hidden")) closeModelDetail();
+  if (!byId("analyticsModal")?.classList.contains("hidden")) closeAnalytics();
+  else if (!byId("modelDetailModal")?.classList.contains("hidden")) closeModelDetail();
   else if (!byId("uploadModal")?.classList.contains("hidden")) closeUploadModal();
 });
 
@@ -169,6 +171,16 @@ function bindModals() {
 
   // Done button closes model detail
   byId("doneModelDetail")?.addEventListener("click", closeModelDetail);
+
+  // Analytics modal
+  byId("closeAnalytics")?.addEventListener("click", closeAnalytics);
+  byId("analyticsModal")?.addEventListener("click", (e) => {
+    if (e.target === byId("analyticsModal")) closeAnalytics();
+  });
+}
+
+function closeAnalytics() {
+  byId("analyticsModal")?.classList.add("hidden");
 }
 
 function addSelectAll(listEl) {
@@ -996,6 +1008,60 @@ async function getAllSubmissions() {
   return Object.entries(raw).map(([id, value]) => ({ id, ...value }));
 }
 
+async function openModelAnalytics(item) {
+  if (!item?.id) return;
+  const title = item.displayName || item.fileName || "Model";
+  const titleEl = byId("analyticsTitle");
+  const metaEl = byId("analyticsMeta");
+  const loadingEl = byId("analyticsLoading");
+  const contentEl = byId("analyticsContent");
+  if (titleEl) titleEl.textContent = title;
+  if (metaEl) metaEl.textContent = `Status: ${statusLabel(item)} · Uploaded ${formatTs(item.createdAt)}`;
+  if (loadingEl) loadingEl.classList.remove("hidden");
+  if (contentEl) contentEl.classList.add("hidden");
+  byId("analyticsModal")?.classList.remove("hidden");
+
+  try {
+    const modelKey = item.modelKey;
+    let data = { sent: 0, saved: 0, yes: 0, no: 0, rating: "0.0" };
+    if (modelKey) {
+      const snap = await get(dbRef(db, `${ROOT}/models/${modelKey}/data`));
+      if (snap.exists()) data = { ...data, ...snap.val() };
+    }
+
+    const sent = toInt(data.sent, 0);
+    const saved = toInt(data.saved, 0);
+    const yes = toInt(data.yes, 0);
+    const no = toInt(data.no, 0);
+    const opens = yes + no;
+    const rating = parseFloat(data.rating) || 0;
+    const responseRate = sent > 0 ? Math.round((opens / sent) * 100) : 0;
+    const total = yes + no || 1;
+
+    const s = (id, val) => { const el = byId(id); if (el) el.textContent = val; };
+    s("statSent", sent);
+    s("statOpens", opens);
+    s("statSaves", saved);
+    s("statResponseRate", `${responseRate}%`);
+    s("statYesLabel", `${yes} Yes`);
+    s("statNoLabel", `${no} No`);
+    s("statRating", rating.toFixed(1));
+
+    const yesBar = byId("voteBarYes");
+    const noBar = byId("voteBarNo");
+    if (yesBar) yesBar.style.width = `${Math.round((yes / total) * 100)}%`;
+    if (noBar) noBar.style.width = `${Math.round((no / total) * 100)}%`;
+
+    const stars = "★".repeat(Math.round(rating)) + "☆".repeat(5 - Math.round(rating));
+    s("statStars", stars);
+
+    if (loadingEl) loadingEl.classList.add("hidden");
+    if (contentEl) contentEl.classList.remove("hidden");
+  } catch (err) {
+    if (loadingEl) loadingEl.textContent = `Could not load analytics: ${err.message || err}`;
+  }
+}
+
 function openModelDetail(item) {
   if (!item?.id) return;
   // Close any other open modal first
@@ -1206,7 +1272,12 @@ function renderSubmissionRows() {
 
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td><strong>${escapeHtml(displayName)}</strong><br><span class="muted" style="font-size:12px">${escapeHtml(item.fileName || "")}</span></td>
+      <td>
+        <button class="model-name-link" data-analytics="true">
+          <strong>${escapeHtml(displayName)}</strong><br>
+          <span class="muted" style="font-size:12px">${escapeHtml(item.fileName || "")}</span>
+        </button>
+      </td>
       ${isAdmin ? `<td>${escapeHtml(item.businessName || item.businessId || "-")}</td>` : ""}
       <td><span class="status-pill status-${item.status || "pending"}">${escapeHtml(statusLabel(item))}</span></td>
       <td>
@@ -1218,6 +1289,7 @@ function renderSubmissionRows() {
       <td>${formatTs(item.createdAt)}</td>
     `;
     tr.querySelector(".manage-questions-btn").addEventListener("click", () => openModelDetail(item));
+    tr.querySelector("[data-analytics]").addEventListener("click", () => openModelAnalytics(item));
     mySubmissionsBody.appendChild(tr);
   });
 }
