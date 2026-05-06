@@ -528,6 +528,33 @@ tr:last-child td { border-bottom: none; }
 
 .q-count-badge.has-questions { background: #dcfce7; color: #166534; }
 
+/* Row action animations */
+@keyframes flashApproved {
+  0%   { background: transparent; }
+  25%  { background: #bbf7d0; }
+  60%  { background: #dcfce7; }
+  100% { background: transparent; }
+}
+
+@keyframes flashPushed {
+  0%   { background: transparent; }
+  15%  { background: #c7d2fe; }
+  40%  { background: #e0e7ff; box-shadow: inset 0 0 0 2px #6366f1; }
+  70%  { background: #ede9fe; box-shadow: inset 0 0 0 1px #8b5cf6; }
+  100% { background: transparent; box-shadow: none; }
+}
+
+@keyframes flashRejected {
+  0%   { background: transparent; }
+  25%  { background: #fecaca; }
+  60%  { background: #fee2e2; }
+  100% { background: transparent; }
+}
+
+tr.row-flash-approved td { animation: flashApproved 1.4s ease-out forwards; }
+tr.row-flash-pushed td   { animation: flashPushed 1.8s ease-out forwards; }
+tr.row-flash-rejected td { animation: flashRejected 1.2s ease-out forwards; }
+
 /* Disabled action buttons */
 button[disabled] {
   opacity: 0.35;

@@ -483,6 +483,14 @@ async function loadApprovalQueue() {
           } else if (action === "push") {
             await pushSubmissionToApp(id);
           }
+          // Flash row before refresh
+          const row = btn.closest("tr");
+          const flashClass = { approve: "row-flash-approved", reject: "row-flash-rejected", push: "row-flash-pushed" }[action];
+          if (row && flashClass) {
+            row.classList.add(flashClass);
+            await new Promise((res) => setTimeout(res, action === "push" ? 1800 : 1400));
+            row.classList.remove(flashClass);
+          }
           showToast(successMessages[action]);
           await refreshAll();
         } catch (err) {
