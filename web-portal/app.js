@@ -116,6 +116,8 @@ savePartnerSubscribersButton?.addEventListener("click", savePartnerSubscribersMa
 partnerSelectForSubscribers?.addEventListener("change", syncPartnerSubscribersSelection);
 byId("cardTotalUploads")?.addEventListener("click", () => { setActiveScreen("uploads"); setSubmissionFilter("all"); });
 byId("cardApprovedUploads")?.addEventListener("click", () => { setActiveScreen("uploads"); setSubmissionFilter("approved"); });
+byId("cardOpenCount")?.addEventListener("click", () => { setActiveScreen("uploads"); setSubmissionFilter("all"); });
+byId("cardSaveCount")?.addEventListener("click", () => { setActiveScreen("uploads"); setSubmissionFilter("all"); });
 filterAllSubmissions?.addEventListener("click", () => setSubmissionFilter("all"));
 filterApprovedSubmissions?.addEventListener("click", () => setSubmissionFilter("approved"));
 filterPendingSubmissions?.addEventListener("click", () => setSubmissionFilter("pending"));
