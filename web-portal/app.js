@@ -826,6 +826,16 @@ async function pushSubmissionToApp(submissionId, options = {}) {
     assignmentError
   });
 
+  // Update model data/sent count so analytics shows how many users received it
+  if (modelKey && assigned > 0) {
+    try {
+      const modelDataRef = dbRef(db, `${ROOT}/models/${modelKey}/data`);
+      const existing = await get(modelDataRef);
+      const cur = existing.exists() ? existing.val() : {};
+      await update(modelDataRef, { sent: toInt(cur.sent, 0) + assigned });
+    } catch (e) { console.warn("Could not update sent count:", e); }
+  }
+
   await upsertModelUploadTracker({
     modelKey,
     status: "approved",

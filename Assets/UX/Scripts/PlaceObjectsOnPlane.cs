@@ -80,9 +80,9 @@ public class PlaceObjectsOnPlane : MonoBehaviour
         var uiMgr = FindObjectOfType<UIManager>();
         if (uiMgr != null) uiMgr.enabled = false;
 
-        // Hide progress bar immediately — show status text instead
+        // Hide progress bar — animate status text instead
         if (progressBar != null) progressBar.SetActive(false);
-        UpdateStatusText("Downloading model...");
+        StartCoroutine(AnimateDownloadText());
 
         CreateBackButton();
 
@@ -170,26 +170,40 @@ public class PlaceObjectsOnPlane : MonoBehaviour
 
     private string _storagePath;
 
+    private bool _downloadDone = false;
+
+    IEnumerator AnimateDownloadText()
+    {
+        string[] dots = { "Downloading model", "Downloading model.", "Downloading model..", "Downloading model..." };
+        int idx = 0;
+        while (!_downloadDone)
+        {
+            UpdateStatusText(dots[idx % dots.Length]);
+            idx++;
+            yield return new WaitForSeconds(0.4f);
+        }
+    }
+
     IEnumerator DownloadWithTimeout(string path)
     {
+        _downloadDone = false;
+        DownloadFileAsync(path, () => { _downloadDone = true; });
+
         float elapsed = 0f;
-        bool done = false;
-
-        DownloadFileAsync(path, () => done = true);
-
-        while (!done && elapsed < 20f)
+        while (!_downloadDone && elapsed < 20f)
         {
             elapsed += Time.deltaTime;
             yield return null;
         }
 
-        if (!done)
+        _downloadDone = true; // stop animation
+
+        if (elapsed >= 20f)
         {
             Debug.LogWarning("[AR] Download timed out after 20s — showing UI anyway.");
-            if (pb != null) pb.BarValue = 100;
             if (progressBar != null) progressBar.SetActive(false);
             if (userInterface != null) userInterface.SetActive(true);
-            UpdateStatusText("Download timed out. Tap a surface to try placing.");
+            UpdateStatusText("Download timed out. Move phone to scan surface.");
         }
     }
 
