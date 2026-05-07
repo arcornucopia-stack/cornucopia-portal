@@ -235,13 +235,49 @@ async function notifyAllAdmins(message, type = "info") {
   } catch (err) { console.warn("Could not notify admins:", err); }
 }
 
+let _notifDropdownOpen = false;
+
+function bindNotificationBell() {
+  const bell = byId("bellBtn");
+  const dropdown = byId("notifDropdown");
+  if (!bell || !dropdown) return;
+
+  bell.addEventListener("click", (e) => {
+    e.stopPropagation();
+    _notifDropdownOpen = !_notifDropdownOpen;
+    dropdown.classList.toggle("hidden", !_notifDropdownOpen);
+    if (_notifDropdownOpen) loadPortalNotifications();
+  });
+
+  document.addEventListener("click", (e) => {
+    if (_notifDropdownOpen && !dropdown.contains(e.target) && e.target !== bell) {
+      _notifDropdownOpen = false;
+      dropdown.classList.add("hidden");
+    }
+  });
+
+  byId("markAllRead")?.addEventListener("click", async () => {
+    if (!currentUser) return;
+    const snap = await get(dbRef(db, `${ROOT}/portal_notifications/${currentUser.uid}`));
+    if (snap.exists()) {
+      const updates = {};
+      snap.forEach(child => { updates[child.key + "/read"] = true; });
+      await update(dbRef(db, `${ROOT}/portal_notifications/${currentUser.uid}`), updates);
+    }
+    byId("notifBadge")?.classList.add("hidden");
+    loadPortalNotifications();
+  });
+}
+
 async function loadPortalNotifications() {
-  const list = byId("notifList");
+  const list = byId("notifDropdownList");
   const badge = byId("notifBadge");
-  if (!list || !currentUser) return;
+  if (!currentUser) return;
   try {
     const snap = await get(dbRef(db, `${ROOT}/portal_notifications/${currentUser.uid}`));
-    const items = snap.exists() ? Object.entries(snap.val()).sort((a, b) => (b[1].createdAt || 0) - (a[1].createdAt || 0)) : [];
+    const items = snap.exists()
+      ? Object.entries(snap.val()).sort((a, b) => (b[1].createdAt || 0) - (a[1].createdAt || 0)).slice(0, 20)
+      : [];
     const unread = items.filter(([, n]) => !n.read).length;
 
     if (badge) {
@@ -249,43 +285,56 @@ async function loadPortalNotifications() {
       badge.classList.toggle("hidden", unread === 0);
     }
 
+    if (!list) return;
     list.innerHTML = "";
     if (!items.length) {
-      list.innerHTML = "<p class='muted'>No notifications yet.</p>";
+      list.innerHTML = "<p class='muted' style='padding:16px'>No notifications yet.</p>";
       return;
     }
+
     items.forEach(([id, n]) => {
       const div = document.createElement("div");
       div.className = `notif-item${n.read ? "" : " notif-unread"}`;
+
+      // Build link based on notification type
+      const link = n.submissionId ? `<a class="notif-link" data-screen="uploads">View upload →</a>` : "";
       div.innerHTML = `
         <span class="notif-dot notif-dot-${n.type || "info"}"></span>
         <div class="notif-body">
           <p>${escapeHtml(n.message)}</p>
-          <small class="muted">${formatTs(n.createdAt)}</small>
+          <div class="notif-footer">
+            <small class="muted">${formatTs(n.createdAt)}</small>
+            ${link}
+          </div>
         </div>
       `;
-      div.addEventListener("click", () => {
-        set(dbRef(db, `${ROOT}/portal_notifications/${currentUser.uid}/${id}/read`), true);
+
+      // Mark read on click
+      div.addEventListener("click", async () => {
+        await set(dbRef(db, `${ROOT}/portal_notifications/${currentUser.uid}/${id}/read`), true);
         div.classList.remove("notif-unread");
-        if (badge) {
-          const cur = parseInt(badge.textContent) || 0;
-          if (cur > 0) {
-            const next = cur - 1;
-            badge.textContent = String(next);
-            badge.classList.toggle("hidden", next === 0);
-          }
+        const cur = parseInt(badge?.textContent) || 0;
+        if (badge && cur > 0) {
+          const next = cur - 1;
+          badge.textContent = String(next);
+          badge.classList.toggle("hidden", next === 0);
         }
       });
+
+      // Navigate on link click
+      div.querySelector(".notif-link")?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        _notifDropdownOpen = false;
+        byId("notifDropdown")?.classList.add("hidden");
+        setActiveScreen("uploads");
+        setSubmissionFilter("all");
+      });
+
       list.appendChild(div);
     });
-
-    // Mark all read after viewing
-    if (unread > 0 && byId("notifications")?.classList.contains("active")) {
-      items.filter(([, n]) => !n.read).forEach(([id]) => {
-        set(dbRef(db, `${ROOT}/portal_notifications/${currentUser.uid}/${id}/read`), true);
-      });
-    }
-  } catch (err) { list.innerHTML = `<p class='muted'>Could not load notifications: ${err.message}</p>`; }
+  } catch (err) {
+    if (list) list.innerHTML = `<p class='muted' style='padding:16px'>Could not load: ${err.message}</p>`;
+  }
 }
 
 function showToast(message, type = "success") {
@@ -324,6 +373,7 @@ onAuthStateChanged(auth, async (user) => {
     return;
   }
   document.querySelector(".shell")?.classList.remove("auth-mode");
+  bindNotificationBell();
 
   const profileSnap = await get(child(dbRef(db), `${ROOT}/users/${user.uid}`));
   if (!profileSnap.exists()) {
@@ -1416,8 +1466,6 @@ function setActiveScreen(screenId) {
 
   const label = targetButton ? targetButton.textContent.trim().replace(/\d+\+?$/, "").trim() : "Dashboard";
   byId("welcomeText").textContent = label;
-
-  if (screenId === "notifications") loadPortalNotifications();
 }
 
 function setSubmissionFilter(filter) {

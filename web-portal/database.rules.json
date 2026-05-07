@@ -60,6 +60,17 @@
           ".read": "auth != null",
           ".write": "auth != null"
         }
+      },
+
+      "portal_notifications": {
+        "$uid": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".write": "auth != null",
+          "$notifId": {
+            ".read": "auth != null && auth.uid === $uid",
+            ".write": "auth != null"
+          }
+        }
       }
     }
   }

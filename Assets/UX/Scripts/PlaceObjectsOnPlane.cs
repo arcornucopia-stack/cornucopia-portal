@@ -71,7 +71,15 @@ public class PlaceObjectsOnPlane : MonoBehaviour
 
     void Start()
     {
+        // Hide any existing back buttons in the scene UI to avoid duplicates
+        foreach (var btn in FindObjectsOfType<UnityEngine.UI.Button>())
+        {
+            if (btn.gameObject.name != "BackButton_AR")
+                btn.gameObject.SetActive(false);
+        }
+
         CreateBackButton();
+
         // Disable raycast on the instructional overlay so taps pass through to AR
         if (userInterface != null)
         {
@@ -181,9 +189,11 @@ public class PlaceObjectsOnPlane : MonoBehaviour
         
 
         // Start downloading a file
+        if (pb != null) pb.BarValue = 5; // Show activity started
         Task task = gsReference.GetFileAsync(path, null, CancellationToken.None);
 
         task.ContinueWithOnMainThread(resultTask => {
+            if (pb != null) pb.BarValue = 100;
             if (progressBar != null) progressBar.SetActive(false);
             if (userInterface != null) userInterface.SetActive(true);
             if (!resultTask.IsFaulted && !resultTask.IsCanceled)

@@ -773,6 +773,78 @@ button[disabled] {
 
 .delete-attr-btn:hover { background: #fee2e2; color: var(--bad); }
 
+/* Bell button */
+.bell-btn {
+  position: relative;
+  background: none;
+  border: none;
+  color: var(--soft);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bell-btn:hover { background: #eef4f1; color: var(--brand); }
+
+/* Notification dropdown */
+.notif-dropdown {
+  position: absolute;
+  top: 64px;
+  right: 20px;
+  width: 360px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.14);
+  z-index: 90;
+  overflow: hidden;
+}
+
+.notif-dropdown-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--line);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.notif-mark-all {
+  background: none;
+  border: none;
+  font-size: 12px;
+  color: var(--brand);
+  cursor: pointer;
+  font-weight: 600;
+  padding: 0;
+}
+
+.notif-dropdown-list {
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+.notif-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4px;
+}
+
+.notif-link {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--brand);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.notif-link:hover { text-decoration: underline; }
+
 /* Portal notification badge */
 .notif-badge {
   display: inline-flex;
