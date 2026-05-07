@@ -222,14 +222,19 @@ public class notification : MonoBehaviour
     void SetCardImage(int index, string path)
     {
         if (objectArray == null || index >= objectArray.Length || objectArray[index] == null) return;
+        // Hide spinner images
+        foreach (var img in objectArray[index].GetComponentsInChildren<UnityEngine.UI.Image>(true))
+            img.enabled = false;
+        // Set name
+        foreach (var t in objectArray[index].GetComponentsInChildren<TMPro.TMP_Text>(true))
+            t.text = nameArray[index].Replace(".glb", "");
+        // Set thumbnail if available
         var tex = GetImage(path);
-        if (tex == null) return;
-        GameObject child = objectArray[index].transform.GetChild(0).gameObject;
-        var rawImage = child.GetComponent<UnityEngine.UI.RawImage>();
-        if (rawImage != null) rawImage.texture = tex;
-        GameObject textChild = objectArray[index].transform.GetChild(1).gameObject;
-        var tmp = textChild.GetComponent<TMPro.TMP_Text>();
-        if (tmp != null) tmp.text = nameArray[index].Replace(".glb", "");
+        if (tex != null)
+        {
+            var rawImage = objectArray[index].GetComponentInChildren<UnityEngine.UI.RawImage>();
+            if (rawImage != null) rawImage.texture = tex;
+        }
     }
 
     async System.Threading.Tasks.Task DownloadFileAsync()

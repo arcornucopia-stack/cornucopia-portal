@@ -72,26 +72,40 @@ public class PlaceObjectsOnPlane : MonoBehaviour
     void Start()
     {
         CreateBackButton();
+        // Disable raycast on the instructional overlay so taps pass through to AR
+        if (userInterface != null)
+        {
+            foreach (var graphic in userInterface.GetComponentsInChildren<UnityEngine.UI.Graphic>(true))
+                graphic.raycastTarget = false;
+        }
     }
 
     void CreateBackButton()
     {
-        var canvas = FindObjectOfType<UnityEngine.Canvas>();
-        if (canvas == null) return;
+        // Find the screen-space overlay canvas
+        UnityEngine.Canvas targetCanvas = null;
+        foreach (var c in FindObjectsOfType<UnityEngine.Canvas>())
+        {
+            if (c.renderMode == UnityEngine.RenderMode.ScreenSpaceOverlay)
+            { targetCanvas = c; break; }
+        }
+        if (targetCanvas == null) targetCanvas = FindObjectOfType<UnityEngine.Canvas>();
+        if (targetCanvas == null) return;
 
-        var btnGo = new GameObject("BackButton", typeof(RectTransform));
-        btnGo.transform.SetParent(canvas.transform, false);
-        btnGo.layer = 5; // UI layer
+        var btnGo = new GameObject("BackButton_AR", typeof(RectTransform));
+        btnGo.transform.SetParent(targetCanvas.transform, false);
+        btnGo.layer = 5;
 
+        // Large touch target — safe area top-left
         var rect = btnGo.GetComponent<RectTransform>();
         rect.anchorMin = new Vector2(0, 1);
         rect.anchorMax = new Vector2(0, 1);
         rect.pivot = new Vector2(0, 1);
-        rect.anchoredPosition = new Vector2(20, -20);
-        rect.sizeDelta = new Vector2(120, 50);
+        rect.anchoredPosition = new Vector2(16, -40);
+        rect.sizeDelta = new Vector2(160, 70);
 
         var img = btnGo.AddComponent<UnityEngine.UI.Image>();
-        img.color = new Color(0, 0, 0, 0.6f);
+        img.color = new Color(0.05f, 0.05f, 0.05f, 0.72f);
 
         var btn = btnGo.AddComponent<UnityEngine.UI.Button>();
         btn.targetGraphic = img;
@@ -99,6 +113,7 @@ public class PlaceObjectsOnPlane : MonoBehaviour
 
         var textGo = new GameObject("Label", typeof(RectTransform));
         textGo.transform.SetParent(btnGo.transform, false);
+        textGo.layer = 5;
         var textRect = textGo.GetComponent<RectTransform>();
         textRect.anchorMin = Vector2.zero;
         textRect.anchorMax = Vector2.one;
@@ -107,7 +122,8 @@ public class PlaceObjectsOnPlane : MonoBehaviour
 
         var tmp = textGo.AddComponent<TMPro.TextMeshProUGUI>();
         tmp.text = "← Back";
-        tmp.fontSize = 18;
+        tmp.fontSize = 22;
+        tmp.fontStyle = TMPro.FontStyles.Bold;
         tmp.color = Color.white;
         tmp.alignment = TMPro.TextAlignmentOptions.Center;
     }

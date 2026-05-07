@@ -227,13 +227,17 @@ public class allUserModel : MonoBehaviour
             Debug.Log("z=" + z);
             downloadPath = $"{Application.persistentDataPath}/Files/" + picArray[z] + ".png";
 
-            // Set name text immediately regardless of thumbnail outcome
-            var tmp = objectArray[z].GetComponentInChildren<TMP_Text>();
-            if (tmp != null) tmp.text = nameArray[z].Replace(".glb", "");
+            // Set name text and hide spinner immediately
+            var allTexts = objectArray[z].GetComponentsInChildren<TMP_Text>(true);
+            foreach (var t in allTexts) t.text = nameArray[z].Replace(".glb", "");
 
-            // Disable all animators (loading spinners) at any depth
+            // Disable all animators and non-RawImage images (the spinner)
             foreach (var anim in objectArray[z].GetComponentsInChildren<Animator>(true))
                 anim.enabled = false;
+
+            // Hide the spinner (non-RawImage images = the spinning circle)
+            foreach (var img in objectArray[z].GetComponentsInChildren<UnityEngine.UI.Image>(true))
+                img.enabled = false;
 
             var rawImg = objectArray[z].GetComponentInChildren<RawImage>();
 
