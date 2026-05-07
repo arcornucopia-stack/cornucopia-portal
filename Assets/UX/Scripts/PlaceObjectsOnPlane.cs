@@ -211,11 +211,10 @@ public class PlaceObjectsOnPlane : MonoBehaviour
         StorageReference gsReference = storage.GetReference(_storagePath);
         Debug.Log($"[AR] Downloading from path: {_storagePath}");
 
-        if (pb != null) pb.BarValue = 5;
         Task task = gsReference.GetFileAsync(path, null, CancellationToken.None);
 
         task.ContinueWithOnMainThread(resultTask => {
-            if (pb != null) pb.BarValue = 100;
+            try { if (pb != null) pb.BarValue = 100; } catch { }
             if (progressBar != null) progressBar.SetActive(false);
             if (userInterface != null) userInterface.SetActive(true);
             if (!resultTask.IsFaulted && !resultTask.IsCanceled)
