@@ -71,19 +71,45 @@ public class PlaceObjectsOnPlane : MonoBehaviour
 
     void Start()
     {
-        // Wire the back button
-        var buttons = FindObjectsOfType<UnityEngine.UI.Button>();
-        foreach (var btn in buttons)
-        {
-            if (btn.gameObject.name == "Button")
-            {
-                var label = btn.GetComponentInChildren<TMPro.TextMeshProUGUI>();
-                if (label != null) label.text = "← Back";
-                btn.onClick.RemoveAllListeners();
-                btn.onClick.AddListener(BackToHome);
-                break;
-            }
-        }
+        CreateBackButton();
+    }
+
+    void CreateBackButton()
+    {
+        var canvas = FindObjectOfType<UnityEngine.Canvas>();
+        if (canvas == null) return;
+
+        var btnGo = new GameObject("BackButton", typeof(RectTransform));
+        btnGo.transform.SetParent(canvas.transform, false);
+        btnGo.layer = 5; // UI layer
+
+        var rect = btnGo.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0, 1);
+        rect.anchorMax = new Vector2(0, 1);
+        rect.pivot = new Vector2(0, 1);
+        rect.anchoredPosition = new Vector2(20, -20);
+        rect.sizeDelta = new Vector2(120, 50);
+
+        var img = btnGo.AddComponent<UnityEngine.UI.Image>();
+        img.color = new Color(0, 0, 0, 0.6f);
+
+        var btn = btnGo.AddComponent<UnityEngine.UI.Button>();
+        btn.targetGraphic = img;
+        btn.onClick.AddListener(BackToHome);
+
+        var textGo = new GameObject("Label", typeof(RectTransform));
+        textGo.transform.SetParent(btnGo.transform, false);
+        var textRect = textGo.GetComponent<RectTransform>();
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.sizeDelta = Vector2.zero;
+        textRect.anchoredPosition = Vector2.zero;
+
+        var tmp = textGo.AddComponent<TMPro.TextMeshProUGUI>();
+        tmp.text = "← Back";
+        tmp.fontSize = 18;
+        tmp.color = Color.white;
+        tmp.alignment = TMPro.TextAlignmentOptions.Center;
     }
 
     void Awake()
@@ -142,17 +168,16 @@ public class PlaceObjectsOnPlane : MonoBehaviour
         Task task = gsReference.GetFileAsync(path, null, CancellationToken.None);
 
         task.ContinueWithOnMainThread(resultTask => {
+            if (progressBar != null) progressBar.SetActive(false);
+            if (userInterface != null) userInterface.SetActive(true);
             if (!resultTask.IsFaulted && !resultTask.IsCanceled)
             {
-                if (progressBar != null) progressBar.SetActive(false);
-                if (userInterface != null) userInterface.SetActive(true);
                 Debug.Log("Download finished.");
                 LoadModel(path);
             }
             else
             {
                 Debug.LogError("[PlaceObjects] Download failed: " + (resultTask.Exception?.Message ?? "unknown"));
-                if (progressBar != null) progressBar.SetActive(false);
             }
         });
    
@@ -211,10 +236,13 @@ public class PlaceObjectsOnPlane : MonoBehaviour
         if (Input.touchCount > 0)
         {
             Touch touch = Input.GetTouch(0);
-            
 
             if (touch.phase == TouchPhase.Began)
             {
+                // Skip if touch is over UI (e.g. back button)
+                if (UnityEngine.EventSystems.EventSystem.current != null &&
+                    UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject(touch.fingerId))
+                    return;
                 if (m_RaycastManager.Raycast(touch.position, s_Hits, TrackableType.PlaneWithinPolygon))
                 {
                     Pose hitPose = s_Hits[0].pose;

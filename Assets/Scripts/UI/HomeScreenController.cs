@@ -155,14 +155,7 @@ namespace Cornucopia.UI
 
                 if (userModelsTask.IsCompleted && userModelsTask.Result != null)
                 {
-                    var snapshot = userModelsTask.Result;
-                    _totalCollectibles = (int)snapshot.ChildrenCount;
-
-                    if (collectiblesCountText != null)
-                        collectiblesCountText.text = _totalCollectibles.ToString();
-
-                    // Count new items (unsaved models)
-                    await CheckForNewItems(snapshot);
+                    await CheckForNewItems(userModelsTask.Result);
                 }
             }
             catch (System.Exception e)
@@ -184,26 +177,41 @@ namespace Cornucopia.UI
         {
             try
             {
+                // Fetch global models list to cross-reference (match notification.cs logic)
+                var globalModelsSnap = await FirebaseDatabase.DefaultInstance
+                    .GetReference("cornucopia").Child("models").GetValueAsync();
+
+                var globalModelKeys = new System.Collections.Generic.HashSet<string>();
+                if (globalModelsSnap.Exists)
+                {
+                    foreach (DataSnapshot m in globalModelsSnap.Children)
+                        globalModelKeys.Add(m.Key);
+                }
+
                 _newItems = 0;
+                _totalCollectibles = 0;
                 foreach (DataSnapshot userModel in userModelsSnapshot.Children)
                 {
                     var raw = userModel.GetRawJsonValue();
-                    if (string.IsNullOrEmpty(raw))
-                        continue;
+                    if (string.IsNullOrEmpty(raw)) continue;
 
                     var modelData = JsonUtility.FromJson<UserModelData>(raw);
-                    if (modelData != null && !modelData.saved)
-                    {
-                        _newItems++;
-                    }
+                    if (modelData == null) continue;
+
+                    // Only count models that exist in global models (same as notification.cs)
+                    if (!globalModelKeys.Contains(modelData.MName)) continue;
+
+                    _totalCollectibles++;
+                    if (!modelData.saved) _newItems++;
                 }
 
+                if (collectiblesCountText != null)
+                    collectiblesCountText.text = _totalCollectibles.ToString();
                 if (newItemsCountText != null)
                     newItemsCountText.text = _newItems.ToString();
 
                 UpdateNotificationBadge(_newItems);
                 PlayerPrefs.SetInt("notifyCount", _newItems);
-                await System.Threading.Tasks.Task.CompletedTask;
             }
             catch (System.Exception e)
             {

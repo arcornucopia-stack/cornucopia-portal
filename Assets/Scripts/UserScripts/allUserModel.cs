@@ -227,15 +227,20 @@ public class allUserModel : MonoBehaviour
             Debug.Log("z=" + z);
             downloadPath = $"{Application.persistentDataPath}/Files/" + picArray[z] + ".png";
 
-            // Always set the name text immediately regardless of thumbnail
-            GameObject textChild = objectArray[z].transform.GetChild(1).gameObject;
-            textChild.GetComponent<TMP_Text>().text = nameArray[z].Replace(".glb", "");
+            // Set name text immediately regardless of thumbnail outcome
+            var tmp = objectArray[z].GetComponentInChildren<TMP_Text>();
+            if (tmp != null) tmp.text = nameArray[z].Replace(".glb", "");
+
+            // Disable any loading spinner Animator
+            var anim = objectArray[z].GetComponent<Animator>();
+            if (anim != null) anim.enabled = false;
+
+            var rawImg = objectArray[z].GetComponentInChildren<RawImage>();
 
             if (File.Exists(downloadPath))
             {
                 Debug.Log("Found the same file locally, Loading!!!");
-                GameObject child = objectArray[z].transform.GetChild(0).gameObject;
-                child.GetComponent<RawImage>().texture = GetImage(downloadPath);
+                if (rawImg != null) rawImg.texture = GetImage(downloadPath);
             }
             else if (!string.IsNullOrEmpty(picArray[z]))
             {
@@ -247,13 +252,8 @@ public class allUserModel : MonoBehaviour
                 var task = gsReference.GetFileAsync(capturedPath).ContinueWithOnMainThread(task => {
                     if (!task.IsFaulted && !task.IsCanceled)
                     {
-                        Debug.Log("Thumbnail downloaded: " + capturedPath);
-                        GameObject child = objectArray[capturedZ].transform.GetChild(0).gameObject;
-                        child.GetComponent<RawImage>().texture = GetImage(capturedPath);
-                    }
-                    else
-                    {
-                        Debug.Log("[Collectibles] No thumbnail for " + picArray[capturedZ] + " — name shown, no image.");
+                        var ri = objectArray[capturedZ].GetComponentInChildren<RawImage>();
+                        if (ri != null) ri.texture = GetImage(capturedPath);
                     }
                 });
                 await task;
