@@ -1178,7 +1178,18 @@ async function sendApprovedPartnerModelToUsers() {
       await set(userModelRef, { MName: modelKey, saved: false, Rating: "0.0", answer: "pending" });
       assigned += 1;
     }
+    // Update data/sent count so analytics reflects delivery
+    if (assigned > 0) {
+      try {
+        const modelDataRef = dbRef(db, `${ROOT}/models/${modelKey}/data`);
+        const existing = await get(modelDataRef);
+        const cur = existing.exists() ? existing.val() : {};
+        await update(modelDataRef, { sent: toInt(cur.sent, 0) + assigned });
+      } catch (e) { console.warn("Could not update sent count:", e); }
+    }
     partnerDeliveryMessage.textContent = `Sent model to ${assigned} users.`;
+    showToast(`Model sent to ${assigned} user${assigned !== 1 ? "s" : ""}.`);
+    await refreshAll();
   } catch (err) {
     partnerDeliveryMessage.textContent = `Send failed: ${err.message || err}`;
   }
