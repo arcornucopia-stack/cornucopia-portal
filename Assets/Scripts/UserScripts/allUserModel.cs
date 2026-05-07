@@ -225,45 +225,36 @@ public class allUserModel : MonoBehaviour
         for (int z = 0; z < i; z++)
         {
             Debug.Log("z=" + z);
-            //GetFilePath(url); 
             downloadPath = $"{Application.persistentDataPath}/Files/" + picArray[z] + ".png";
+
+            // Always set the name text immediately regardless of thumbnail
+            GameObject textChild = objectArray[z].transform.GetChild(1).gameObject;
+            textChild.GetComponent<TMP_Text>().text = nameArray[z].Replace(".glb", "");
 
             if (File.Exists(downloadPath))
             {
-
                 Debug.Log("Found the same file locally, Loading!!!");
-
                 GameObject child = objectArray[z].transform.GetChild(0).gameObject;
                 child.GetComponent<RawImage>().texture = GetImage(downloadPath);
-                GameObject textChild = objectArray[z].transform.GetChild(1).gameObject;
-                textChild.GetComponent<TMP_Text>().text = nameArray[z].Replace(".glb", "");
             }
-            else
+            else if (!string.IsNullOrEmpty(picArray[z]))
             {
                 StorageReference gsReference =
                  storage.GetReferenceFromUrl("gs://cornucopia-54b02.appspot.com/pics/" + picArray[z] + ".png");
-               
-                // Download to the local filesystem
-                var task = gsReference.GetFileAsync(downloadPath).ContinueWithOnMainThread(task => {
+
+                int capturedZ = z;
+                string capturedPath = downloadPath;
+                var task = gsReference.GetFileAsync(capturedPath).ContinueWithOnMainThread(task => {
                     if (!task.IsFaulted && !task.IsCanceled)
                     {
-                        Debug.Log("File downloaded.");
-                        Debug.Log(downloadPath);
-                        GameObject child = objectArray[z].transform.GetChild(0).gameObject;
-                        child.GetComponent<RawImage>().texture = GetImage(downloadPath);
-                        GameObject textChild = objectArray[z].transform.GetChild(1).gameObject;
-                        textChild.GetComponent<TMP_Text>().text = nameArray[z].Replace(".glb", "");
+                        Debug.Log("Thumbnail downloaded: " + capturedPath);
+                        GameObject child = objectArray[capturedZ].transform.GetChild(0).gameObject;
+                        child.GetComponent<RawImage>().texture = GetImage(capturedPath);
                     }
                     else
                     {
-                        DialogUI.Instance
-                                               .SetTitle("Error")
-                                               .SetMessage("Error getting data")
-                                               .SetButtonColor(DialogButtonColor.Black)
-                                               .OnClose(() => Debug.Log("Closed 1"))
-                                               .Show();
+                        Debug.Log("[Collectibles] No thumbnail for " + picArray[capturedZ] + " — name shown, no image.");
                     }
-
                 });
                 await task;
 

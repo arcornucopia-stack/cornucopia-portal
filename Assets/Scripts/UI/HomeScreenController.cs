@@ -49,20 +49,16 @@ namespace Cornucopia.UI
 
         private void InitializeUI()
         {
-            // Set welcome message
+            // Set welcome message — on same line for compact display
             string userName = PlayerPrefs.GetString("userName", "Explorer");
             if (usernameText != null)
-            {
                 usernameText.text = userName;
-            }
             if (welcomeText != null)
-            {
                 welcomeText.text = "Welcome back,";
-            }
 
             _userId = PlayerPrefs.GetString("userId");
 
-            // Setup button listeners
+            // Setup main button listeners
             if (scanButton != null)
                 scanButton.onClick.AddListener(OnScanClick);
             if (searchRoomButton != null)
@@ -70,9 +66,29 @@ namespace Cornucopia.UI
             if (exploreButton != null)
                 exploreButton.onClick.AddListener(OnExploreClick);
 
+            // Wire stat cards as clickable buttons
+            WireStatCard("CollectiblesCard", () => SceneManager.LoadScene("Collectibles"));
+            WireStatCard("NewItemsCard", () => SceneManager.LoadScene("Notification"));
+
             // Initialize notification
             PlayerPrefs.SetInt("notifyCount", 0);
             UpdateNotificationBadge(0);
+        }
+
+        private void WireStatCard(string cardName, UnityEngine.Events.UnityAction action)
+        {
+            var cardObj = GameObject.Find(cardName);
+            if (cardObj == null) return;
+            var btn = cardObj.GetComponent<Button>();
+            if (btn == null) btn = cardObj.AddComponent<Button>();
+            var img = cardObj.GetComponent<Image>();
+            if (img != null)
+            {
+                btn.targetGraphic = img;
+                img.raycastTarget = true;
+            }
+            btn.onClick.RemoveAllListeners();
+            btn.onClick.AddListener(action);
         }
 
         private void ApplyTheme()

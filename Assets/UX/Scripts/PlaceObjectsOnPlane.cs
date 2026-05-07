@@ -69,6 +69,23 @@ public class PlaceObjectsOnPlane : MonoBehaviour
         set => m_CanReposition = value;
     }
 
+    void Start()
+    {
+        // Wire the back button
+        var buttons = FindObjectsOfType<UnityEngine.UI.Button>();
+        foreach (var btn in buttons)
+        {
+            if (btn.gameObject.name == "Button")
+            {
+                var label = btn.GetComponentInChildren<TMPro.TextMeshProUGUI>();
+                if (label != null) label.text = "← Back";
+                btn.onClick.RemoveAllListeners();
+                btn.onClick.AddListener(BackToHome);
+                break;
+            }
+        }
+    }
+
     void Awake()
     {
         m_RaycastManager = GetComponent<ARRaycastManager>();
