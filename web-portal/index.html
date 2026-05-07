@@ -17,6 +17,9 @@
       <button class="nav-btn active" data-screen="dashboard">Dashboard</button>
       <button class="nav-btn" data-screen="uploads">My Uploads</button>
       <button class="nav-btn admin-only" data-screen="approvals">Manage Uploads</button>
+      <button class="nav-btn" data-screen="notifications" id="notifNavBtn">
+        Notifications <span id="notifBadge" class="notif-badge hidden">0</span>
+      </button>
       <button class="nav-btn" id="logoutButton">Sign out</button>
     </aside>
 
@@ -142,6 +145,11 @@
               <p id="dispatchMessage" class="muted"></p>
             </div>
           </div>
+        </section>
+
+        <section id="notifications" class="screen">
+          <h3>Notifications</h3>
+          <div id="notifList" class="notif-list"></div>
         </section>
 
         <section id="approvals" class="screen admin-only">

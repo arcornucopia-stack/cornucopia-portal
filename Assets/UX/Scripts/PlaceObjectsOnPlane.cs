@@ -251,11 +251,13 @@ public class PlaceObjectsOnPlane : MonoBehaviour
                     {
                         m_PlacedPrefab.SetActive(true);
                         spawnedObject = Instantiate(m_PlacedPrefab, hitPose.position, hitPose.rotation);
+                        spawnedObject.SetActive(true);
                         m_PlacedPrefab.SetActive(false);
                         m_NumberOfPlacedObjects++;
-                        capture.SetActive(true);
-                        mtitleText.text = PlayerPrefs.GetString("productName");
-                        userInterface.SetActive(false);
+                        if (capture != null) capture.SetActive(true);
+                        if (mtitleText != null) mtitleText.text = PlayerPrefs.GetString("productName");
+                        if (userInterface != null) userInterface.SetActive(false);
+                        Debug.Log("[PlaceObjects] Object placed at " + hitPose.position);
                     }
                     else
                     {

@@ -231,9 +231,9 @@ public class allUserModel : MonoBehaviour
             var tmp = objectArray[z].GetComponentInChildren<TMP_Text>();
             if (tmp != null) tmp.text = nameArray[z].Replace(".glb", "");
 
-            // Disable any loading spinner Animator
-            var anim = objectArray[z].GetComponent<Animator>();
-            if (anim != null) anim.enabled = false;
+            // Disable all animators (loading spinners) at any depth
+            foreach (var anim in objectArray[z].GetComponentsInChildren<Animator>(true))
+                anim.enabled = false;
 
             var rawImg = objectArray[z].GetComponentInChildren<RawImage>();
 

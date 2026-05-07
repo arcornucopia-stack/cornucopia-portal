@@ -215,6 +215,79 @@ function addSelectAll(listEl) {
   }));
 }
 
+// ─── Portal Notification System ─────────────────────────────────────────────
+
+async function sendPortalNotification(toUid, message, type = "info") {
+  const ref = push(dbRef(db, `${ROOT}/portal_notifications/${toUid}`));
+  await set(ref, { message, type, createdAt: Date.now(), read: false });
+}
+
+async function notifyAllAdmins(message, type = "info") {
+  try {
+    const usersSnap = await get(dbRef(db, `${ROOT}/users`));
+    if (!usersSnap.exists()) return;
+    const promises = [];
+    usersSnap.forEach(child => {
+      const role = String(child.val()?.role || "").toLowerCase();
+      if (role === "admin") promises.push(sendPortalNotification(child.key, message, type));
+    });
+    await Promise.all(promises);
+  } catch (err) { console.warn("Could not notify admins:", err); }
+}
+
+async function loadPortalNotifications() {
+  const list = byId("notifList");
+  const badge = byId("notifBadge");
+  if (!list || !currentUser) return;
+  try {
+    const snap = await get(dbRef(db, `${ROOT}/portal_notifications/${currentUser.uid}`));
+    const items = snap.exists() ? Object.entries(snap.val()).sort((a, b) => (b[1].createdAt || 0) - (a[1].createdAt || 0)) : [];
+    const unread = items.filter(([, n]) => !n.read).length;
+
+    if (badge) {
+      badge.textContent = unread > 99 ? "99+" : String(unread);
+      badge.classList.toggle("hidden", unread === 0);
+    }
+
+    list.innerHTML = "";
+    if (!items.length) {
+      list.innerHTML = "<p class='muted'>No notifications yet.</p>";
+      return;
+    }
+    items.forEach(([id, n]) => {
+      const div = document.createElement("div");
+      div.className = `notif-item${n.read ? "" : " notif-unread"}`;
+      div.innerHTML = `
+        <span class="notif-dot notif-dot-${n.type || "info"}"></span>
+        <div class="notif-body">
+          <p>${escapeHtml(n.message)}</p>
+          <small class="muted">${formatTs(n.createdAt)}</small>
+        </div>
+      `;
+      div.addEventListener("click", () => {
+        set(dbRef(db, `${ROOT}/portal_notifications/${currentUser.uid}/${id}/read`), true);
+        div.classList.remove("notif-unread");
+        if (badge) {
+          const cur = parseInt(badge.textContent) || 0;
+          if (cur > 0) {
+            const next = cur - 1;
+            badge.textContent = String(next);
+            badge.classList.toggle("hidden", next === 0);
+          }
+        }
+      });
+      list.appendChild(div);
+    });
+
+    // Mark all read after viewing
+    if (unread > 0 && byId("notifications")?.classList.contains("active")) {
+      items.filter(([, n]) => !n.read).forEach(([id]) => {
+        set(dbRef(db, `${ROOT}/portal_notifications/${currentUser.uid}/${id}/read`), true);
+      });
+    }
+  } catch (err) { list.innerHTML = `<p class='muted'>Could not load notifications: ${err.message}</p>`; }
+}
+
 function showToast(message, type = "success") {
   const toast = byId("toastNotification");
   if (!toast) return;
@@ -295,7 +368,8 @@ async function refreshAll() {
     loadDispatchData(),
     loadPartnerSubscriptionAdminData(),
     loadPartnerSubscribersForUpload(),
-    loadPartnerDeliveryData()
+    loadPartnerDeliveryData(),
+    loadPortalNotifications()
   ]);
 }
 
@@ -406,6 +480,11 @@ async function uploadModel() {
             ? "🎉 Model uploaded and published to the app!"
             : "🎉 Model uploaded successfully! Our team will review it shortly."
         );
+        // Notify admins of new upload (partners only)
+        if (!isAdminUpload) {
+          const partnerName = currentProfile.businessName || currentProfile.name || businessId;
+          await notifyAllAdmins(`📦 ${partnerName} submitted a new model for review.`, "info");
+        }
         await refreshAll();
       } catch (err) {
         uploadMessage.textContent = `Upload completed but publish step failed: ${err.message || err}`;
@@ -511,6 +590,25 @@ async function loadApprovalQueue() {
           } else if (action === "push") {
             await pushSubmissionToApp(id);
           }
+          // Notify the partner who submitted
+          try {
+            const subSnap = await get(dbRef(db, `${ROOT}/submissions/${id}`));
+            if (subSnap.exists()) {
+              const sub = subSnap.val();
+              const partnerUid = sub.uploaderUid;
+              const modelName = sub.displayName || sub.fileName || "your model";
+              const partnerMessages = {
+                approve: `✅ "${modelName}" has been approved!`,
+                reject: `❌ "${modelName}" was not approved this time.`,
+                push: `🚀 "${modelName}" is now live in the app!`
+              };
+              if (partnerUid && partnerMessages[action]) {
+                await sendPortalNotification(partnerUid, partnerMessages[action],
+                  action === "reject" ? "error" : "success");
+              }
+            }
+          } catch (e) { console.warn("Could not notify partner:", e); }
+
           // Flash row before refresh
           const row = btn.closest("tr");
           const flashClass = { approve: "row-flash-approved", reject: "row-flash-rejected", push: "row-flash-pushed" }[action];
@@ -569,11 +667,23 @@ async function ensureModelRecordFromSubmission(submissionId) {
   const modelSnap = await get(modelRef);
   if (modelSnap.exists()) return;
 
+  // Read the first question assigned to this submission
+  let questionText = item.question || "";
+  if (!questionText) {
+    const questionsSnap = await get(dbRef(db, `${ROOT}/submissions/${submissionId}/questions`));
+    if (questionsSnap.exists()) {
+      const questions = Object.values(questionsSnap.val());
+      const first = questions.find(q => q.type === "yes_no") || questions[0];
+      if (first) questionText = first.text;
+    }
+  }
+  if (!questionText) questionText = "Would you like this product?";
+
   await set(modelRef, {
     name: item.displayName || stripGlbExtension(item.fileName || modelKey),
     modelNamee: modelKey,
     picPathh: item.picPathh || modelKey,
-    question: item.question || "Would you like this product?",
+    question: questionText,
     storagePath: item.storagePath || "",
     data: { sent: 0, saved: 0, yes: 0, no: 0, rating: "0.0" }
   });
@@ -1304,8 +1414,10 @@ function setActiveScreen(screenId) {
     targetScreen.classList.add("active");
   }
 
-  const label = targetButton ? targetButton.textContent : "Dashboard";
+  const label = targetButton ? targetButton.textContent.trim().replace(/\d+\+?$/, "").trim() : "Dashboard";
   byId("welcomeText").textContent = label;
+
+  if (screenId === "notifications") loadPortalNotifications();
 }
 
 function setSubmissionFilter(filter) {
