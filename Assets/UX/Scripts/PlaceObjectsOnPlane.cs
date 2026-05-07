@@ -200,12 +200,12 @@ public class PlaceObjectsOnPlane : MonoBehaviour
             {
                 Debug.Log("[AR] Download finished.");
                 LoadModel(path);
-                UpdateStatusText("📱 Move phone slowly over a flat surface to scan");
+                UpdateStatusText(" Move phone slowly over a flat surface to scan");
             }
             else
             {
                 Debug.LogError("[AR] Download failed: " + (resultTask.Exception?.Message ?? "unknown"));
-                UpdateStatusText("⚠ Model could not load — move phone to scan anyway");
+                UpdateStatusText("Model load failed - move phone to scan surface");
             }
         });
    
@@ -285,7 +285,7 @@ public class PlaceObjectsOnPlane : MonoBehaviour
     {
         if (Input.GetKeyDown(KeyCode.Escape)) { BackToHome(); return; }
 
-        if (m_PlacedPrefab == null) { UpdateStatusText("⚠ Prefab missing"); return; }
+        if (m_PlacedPrefab == null) { UpdateStatusText("Prefab missing"); return; }
         m_PlacedPrefab.SetActive(false);
 
         if (Input.touchCount > 0)
@@ -304,7 +304,7 @@ public class PlaceObjectsOnPlane : MonoBehaviour
                 }
                 bool hit = m_RaycastManager.Raycast(touch.position, s_Hits, TrackableType.PlaneWithinPolygon);
                 Debug.Log($"[AR] Raycast result: {hit}, planes: {s_Hits.Count}");
-                UpdateStatusText(hit ? "✓ Surface found — placing…" : "👋 No surface detected — point at a flat table or floor");
+                UpdateStatusText(hit ? "Surface found - placing..." : "No surface yet. Point at a flat table or floor.");
 
                 if (hit)
                 {
@@ -320,7 +320,7 @@ public class PlaceObjectsOnPlane : MonoBehaviour
                         if (capture != null) capture.SetActive(true);
                         if (mtitleText != null) mtitleText.text = PlayerPrefs.GetString("productName");
                         if (userInterface != null) userInterface.SetActive(false);
-                        UpdateStatusText("✓ Placed! Tap again to move.");
+                        UpdateStatusText("Placed! Tap again to move.");
                         Debug.Log("[PlaceObjects] Object placed at " + hitPose.position);
                     }
                     else
