@@ -71,6 +71,19 @@ public class PlaceObjectsOnPlane : MonoBehaviour
 
     void Start()
     {
+        // Hide the original scene back button to avoid duplicate
+        var origBtn = GameObject.Find("Button");
+        if (origBtn != null) origBtn.SetActive(false);
+
+        // Disable UIManager — its "Tap to Place" / "Wait for tracking" overlay
+        // conflicts with our own status bar
+        var uiMgr = FindObjectOfType<UIManager>();
+        if (uiMgr != null) uiMgr.enabled = false;
+
+        // Hide progress bar immediately — show status text instead
+        if (progressBar != null) progressBar.SetActive(false);
+        UpdateStatusText("Downloading model...");
+
         CreateBackButton();
 
         // Disable raycast on the instructional overlay so taps pass through to AR
@@ -140,7 +153,7 @@ public class PlaceObjectsOnPlane : MonoBehaviour
     {
         m_RaycastManager = GetComponent<ARRaycastManager>();
         if (userInterface != null) userInterface.SetActive(false);
-        if (progressBar != null) progressBar.SetActive(true);
+        if (progressBar != null) progressBar.SetActive(false);
 
         string modelName = PlayerPrefs.GetString("modelName");
         _storagePath = PlayerPrefs.GetString("modelStoragePath", "");

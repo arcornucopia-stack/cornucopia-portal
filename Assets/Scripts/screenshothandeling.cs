@@ -16,10 +16,9 @@ public class screenshothandeling : MonoBehaviour
     public GameObject ui;
     public void take()
     {
-
-        back.gameObject.SetActive(false);
-        capturee.gameObject.SetActive(false);
-        ui.SetActive(false);
+        if (back != null) back.gameObject.SetActive(false);
+        if (capturee != null) capturee.gameObject.SetActive(false);
+        if (ui != null) ui.SetActive(false);
         guid = System.Guid.NewGuid();
 
         StartCoroutine(TakeScreenshotAndShare());
@@ -37,13 +36,10 @@ public class screenshothandeling : MonoBehaviour
         Debug.Log(Application.persistentDataPath);
         Debug.Log("Permission result: " + permission);
         
-        back.gameObject.SetActive(true);
-        capturee.gameObject.SetActive(true);
-        
-        
-        // popup.SetActive(true);
-
+        if (back != null) back.gameObject.SetActive(true);
+        if (capturee != null) capturee.gameObject.SetActive(true);
     }
+
     private IEnumerator TakeScreenshotAndShare()
     {
         yield return new WaitForEndOfFrame();
@@ -55,15 +51,14 @@ public class screenshothandeling : MonoBehaviour
         string filePath = Path.Combine(Application.temporaryCachePath, "shared img.png");
         File.WriteAllBytes(filePath, ss.EncodeToPNG());
 
-        // To avoid memory leaks
         Destroy(ss);
 
         new NativeShare().AddFile(filePath)
             .SetSubject("Cornucopia").SetText("Cornucopia!").SetUrl("")
             .SetCallback((result, shareTarget) => Debug.Log("Share result: " + result + ", selected app: " + shareTarget))
             .Share();
-        back.gameObject.SetActive(true);
-        capturee.gameObject.SetActive(true);
+        if (back != null) back.gameObject.SetActive(true);
+        if (capturee != null) capturee.gameObject.SetActive(true);
         // Share on WhatsApp only, if installed (Android only)
         //if( NativeShare.TargetExists( "com.whatsapp" ) )
         //	new NativeShare().AddFile( filePath ).AddTarget( "com.whatsapp" ).Share();
