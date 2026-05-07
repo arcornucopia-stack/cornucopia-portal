@@ -188,12 +188,14 @@ public class PlaceObjectsOnPlane : MonoBehaviour
             if (userInterface != null) userInterface.SetActive(true);
             if (!resultTask.IsFaulted && !resultTask.IsCanceled)
             {
-                Debug.Log("Download finished.");
+                Debug.Log("[AR] Download finished.");
                 LoadModel(path);
+                UpdateStatusText("📱 Move phone slowly over a flat surface to scan");
             }
             else
             {
-                Debug.LogError("[PlaceObjects] Download failed: " + (resultTask.Exception?.Message ?? "unknown"));
+                Debug.LogError("[AR] Download failed: " + (resultTask.Exception?.Message ?? "unknown"));
+                UpdateStatusText("⚠ Model could not load — move phone to scan anyway");
             }
         });
    
@@ -238,28 +240,63 @@ public class PlaceObjectsOnPlane : MonoBehaviour
 
 
 
+    private TMPro.TextMeshProUGUI _statusText;
+
+    void UpdateStatusText(string msg)
+    {
+        if (_statusText == null)
+        {
+            var canvases = FindObjectsOfType<UnityEngine.Canvas>();
+            UnityEngine.Canvas c = null;
+            foreach (var cv in canvases)
+                if (cv.renderMode == UnityEngine.RenderMode.ScreenSpaceOverlay) { c = cv; break; }
+            if (c == null && canvases.Length > 0) c = canvases[0];
+            if (c != null)
+            {
+                var go = new GameObject("ARStatus", typeof(RectTransform));
+                go.transform.SetParent(c.transform, false);
+                go.layer = 5;
+                var r = go.GetComponent<RectTransform>();
+                r.anchorMin = new Vector2(0, 0); r.anchorMax = new Vector2(1, 0);
+                r.pivot = new Vector2(0.5f, 0); r.anchoredPosition = new Vector2(0, 100);
+                r.sizeDelta = new Vector2(0, 60);
+                _statusText = go.AddComponent<TMPro.TextMeshProUGUI>();
+                _statusText.fontSize = 18; _statusText.color = Color.white;
+                _statusText.alignment = TMPro.TextAlignmentOptions.Center;
+                _statusText.fontStyle = TMPro.FontStyles.Bold;
+                // Add background
+                go.AddComponent<UnityEngine.UI.Image>().color = new Color(0, 0, 0, 0.5f);
+            }
+        }
+        if (_statusText != null) _statusText.text = msg;
+    }
+
     void Update()
     {
-        // Always allow users to leave scan scene using device back key / Escape.
-        if (Input.GetKeyDown(KeyCode.Escape))
-        {
-            BackToHome();
-            return;
-        }
+        if (Input.GetKeyDown(KeyCode.Escape)) { BackToHome(); return; }
 
-      //  errors.text = m_PlacedPrefab.transform.GetChild(0).name;
+        if (m_PlacedPrefab == null) { UpdateStatusText("⚠ Prefab missing"); return; }
         m_PlacedPrefab.SetActive(false);
+
         if (Input.touchCount > 0)
         {
             Touch touch = Input.GetTouch(0);
 
             if (touch.phase == TouchPhase.Began)
             {
-                // Skip if touch is over UI (e.g. back button)
+                Debug.Log($"[AR] Touch at {touch.position}");
+                // Only skip if the named back button is touched
                 if (UnityEngine.EventSystems.EventSystem.current != null &&
                     UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject(touch.fingerId))
+                {
+                    Debug.Log("[AR] Touch blocked by UI element");
                     return;
-                if (m_RaycastManager.Raycast(touch.position, s_Hits, TrackableType.PlaneWithinPolygon))
+                }
+                bool hit = m_RaycastManager.Raycast(touch.position, s_Hits, TrackableType.PlaneWithinPolygon);
+                Debug.Log($"[AR] Raycast result: {hit}, planes: {s_Hits.Count}");
+                UpdateStatusText(hit ? "✓ Surface found — placing…" : "👋 No surface detected — point at a flat table or floor");
+
+                if (hit)
                 {
                     Pose hitPose = s_Hits[0].pose;
 
@@ -273,6 +310,7 @@ public class PlaceObjectsOnPlane : MonoBehaviour
                         if (capture != null) capture.SetActive(true);
                         if (mtitleText != null) mtitleText.text = PlayerPrefs.GetString("productName");
                         if (userInterface != null) userInterface.SetActive(false);
+                        UpdateStatusText("✓ Placed! Tap again to move.");
                         Debug.Log("[PlaceObjects] Object placed at " + hitPose.position);
                     }
                     else
