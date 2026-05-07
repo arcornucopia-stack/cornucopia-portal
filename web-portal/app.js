@@ -217,9 +217,9 @@ function addSelectAll(listEl) {
 
 // ─── Portal Notification System ─────────────────────────────────────────────
 
-async function sendPortalNotification(toUid, message, type = "info") {
+async function sendPortalNotification(toUid, message, type = "info", screen = "uploads") {
   const ref = push(dbRef(db, `${ROOT}/portal_notifications/${toUid}`));
-  await set(ref, { message, type, createdAt: Date.now(), read: false });
+  await set(ref, { message, type, screen, createdAt: Date.now(), read: false });
 }
 
 async function notifyAllAdmins(message, type = "info") {
@@ -236,11 +236,14 @@ async function notifyAllAdmins(message, type = "info") {
 }
 
 let _notifDropdownOpen = false;
+let _bellBound = false;
 
 function bindNotificationBell() {
+  if (_bellBound) return; // prevent duplicate binding on re-auth
   const bell = byId("bellBtn");
   const dropdown = byId("notifDropdown");
   if (!bell || !dropdown) return;
+  _bellBound = true;
 
   bell.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -296,20 +299,20 @@ async function loadPortalNotifications() {
       const div = document.createElement("div");
       div.className = `notif-item${n.read ? "" : " notif-unread"}`;
 
-      // Build link based on notification type
-      const link = n.submissionId ? `<a class="notif-link" data-screen="uploads">View upload →</a>` : "";
+      // All notifications link to the relevant screen
+      const targetScreen = n.screen || "uploads";
       div.innerHTML = `
         <span class="notif-dot notif-dot-${n.type || "info"}"></span>
         <div class="notif-body">
           <p>${escapeHtml(n.message)}</p>
           <div class="notif-footer">
             <small class="muted">${formatTs(n.createdAt)}</small>
-            ${link}
+            <a class="notif-link">View →</a>
           </div>
         </div>
       `;
 
-      // Mark read on click
+      // Click anywhere on the item: mark read + navigate
       div.addEventListener("click", async () => {
         await set(dbRef(db, `${ROOT}/portal_notifications/${currentUser.uid}/${id}/read`), true);
         div.classList.remove("notif-unread");
@@ -319,15 +322,10 @@ async function loadPortalNotifications() {
           badge.textContent = String(next);
           badge.classList.toggle("hidden", next === 0);
         }
-      });
-
-      // Navigate on link click
-      div.querySelector(".notif-link")?.addEventListener("click", (e) => {
-        e.stopPropagation();
         _notifDropdownOpen = false;
         byId("notifDropdown")?.classList.add("hidden");
-        setActiveScreen("uploads");
-        setSubmissionFilter("all");
+        setActiveScreen(targetScreen);
+        if (targetScreen === "uploads") setSubmissionFilter("all");
       });
 
       list.appendChild(div);
@@ -1273,7 +1271,8 @@ async function openModelAnalytics(item) {
       if (snap.exists()) data = { ...data, ...snap.val() };
     }
 
-    const sent = toInt(data.sent, 0);
+    // Fall back to pushedCount from submission if model data/sent not yet set
+    const sent = toInt(data.sent, 0) || toInt(item.pushedCount, 0);
     const saved = toInt(data.saved, 0);
     const yes = toInt(data.yes, 0);
     const no = toInt(data.no, 0);
