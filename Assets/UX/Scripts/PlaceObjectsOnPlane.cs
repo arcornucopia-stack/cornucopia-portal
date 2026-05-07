@@ -109,7 +109,7 @@ public class PlaceObjectsOnPlane : MonoBehaviour
         // Create a dedicated overlay canvas for the back button so it's always on top
         var overlayCanvas = new GameObject("BackButtonCanvas").AddComponent<UnityEngine.Canvas>();
         overlayCanvas.renderMode = UnityEngine.RenderMode.ScreenSpaceOverlay;
-        overlayCanvas.sortingOrder = 999;
+        overlayCanvas.sortingOrder = 9999; // above everything including capture overlay
         overlayCanvas.gameObject.AddComponent<UnityEngine.UI.CanvasScaler>();
         overlayCanvas.gameObject.AddComponent<UnityEngine.UI.GraphicRaycaster>();
 
@@ -131,6 +131,7 @@ public class PlaceObjectsOnPlane : MonoBehaviour
         var btn = btnGo.AddComponent<UnityEngine.UI.Button>();
         btn.targetGraphic = img;
         btn.onClick.AddListener(BackToHome);
+        _backButtonGO = btnGo;
 
         var textGo = new GameObject("Label", typeof(RectTransform));
         textGo.transform.SetParent(btnGo.transform, false);
@@ -169,6 +170,7 @@ public class PlaceObjectsOnPlane : MonoBehaviour
     }
 
     private string _storagePath;
+    private GameObject _backButtonGO;
 
     private bool _downloadDone = false;
 
@@ -369,6 +371,8 @@ public class PlaceObjectsOnPlane : MonoBehaviour
                         if (capture != null) capture.SetActive(true);
                         if (mtitleText != null) mtitleText.text = PlayerPrefs.GetString("productName");
                         if (userInterface != null) userInterface.SetActive(false);
+                        // Keep back button visible above capture overlay
+                        if (_backButtonGO != null) _backButtonGO.SetActive(true);
                         UpdateStatusText("Placed! Tap again to move.");
                         Debug.Log("[PlaceObjects] Object placed at " + hitPose.position);
                     }
