@@ -71,13 +71,6 @@ public class PlaceObjectsOnPlane : MonoBehaviour
 
     void Start()
     {
-        // Hide any existing back buttons in the scene UI to avoid duplicates
-        foreach (var btn in FindObjectsOfType<UnityEngine.UI.Button>())
-        {
-            if (btn.gameObject.name != "BackButton_AR")
-                btn.gameObject.SetActive(false);
-        }
-
         CreateBackButton();
 
         // Disable raycast on the instructional overlay so taps pass through to AR
@@ -100,8 +93,15 @@ public class PlaceObjectsOnPlane : MonoBehaviour
         if (targetCanvas == null) targetCanvas = FindObjectOfType<UnityEngine.Canvas>();
         if (targetCanvas == null) return;
 
+        // Create a dedicated overlay canvas for the back button so it's always on top
+        var overlayCanvas = new GameObject("BackButtonCanvas").AddComponent<UnityEngine.Canvas>();
+        overlayCanvas.renderMode = UnityEngine.RenderMode.ScreenSpaceOverlay;
+        overlayCanvas.sortingOrder = 999;
+        overlayCanvas.gameObject.AddComponent<UnityEngine.UI.CanvasScaler>();
+        overlayCanvas.gameObject.AddComponent<UnityEngine.UI.GraphicRaycaster>();
+
         var btnGo = new GameObject("BackButton_AR", typeof(RectTransform));
-        btnGo.transform.SetParent(targetCanvas.transform, false);
+        btnGo.transform.SetParent(overlayCanvas.transform, false);
         btnGo.layer = 5;
 
         // Large touch target — safe area top-left
@@ -143,53 +143,75 @@ public class PlaceObjectsOnPlane : MonoBehaviour
         if (progressBar != null) progressBar.SetActive(true);
 
         string modelName = PlayerPrefs.GetString("modelName");
-        string storagePath = PlayerPrefs.GetString("modelStoragePath", "");
+        _storagePath = PlayerPrefs.GetString("modelStoragePath", "");
 
-        if (!string.IsNullOrEmpty(storagePath))
-            url = "gs://cornucopia-54b02.appspot.com/" + storagePath;
-        else
-            url = "gs://cornucopia-54b02.appspot.com/model/" + modelName;
+        if (string.IsNullOrEmpty(_storagePath))
+            _storagePath = "model/" + modelName;
 
         string dir = $"{Application.persistentDataPath}/Files/models/";
         if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
         filePath = dir + modelName;
 
-        DownloadFileAsync(url);
+        StartCoroutine(DownloadWithTimeout(filePath));
+    }
+
+    private string _storagePath;
+
+    IEnumerator DownloadWithTimeout(string path)
+    {
+        float elapsed = 0f;
+        bool done = false;
+
+        DownloadFileAsync(path, () => done = true);
+
+        while (!done && elapsed < 20f)
+        {
+            elapsed += Time.deltaTime;
+            yield return null;
+        }
+
+        if (!done)
+        {
+            Debug.LogWarning("[AR] Download timed out after 20s — showing UI anyway.");
+            if (pb != null) pb.BarValue = 100;
+            if (progressBar != null) progressBar.SetActive(false);
+            if (userInterface != null) userInterface.SetActive(true);
+            UpdateStatusText("Download timed out. Tap a surface to try placing.");
+        }
     }
 
 
 
-    public void DownloadFileAsync(string url)
+    public void DownloadFileAsync(string path, System.Action onComplete = null)
     {
-        string path = filePath;      //GetFilePath(url); 
-
         if (File.Exists(path))
         {
-            // Validate it's actually a GLB (magic bytes: "glTF")
             byte[] header = new byte[4];
             using (var fs = File.OpenRead(path)) fs.Read(header, 0, 4);
             bool validGlb = header[0] == 0x67 && header[1] == 0x6C && header[2] == 0x54 && header[3] == 0x46;
 
             if (validGlb)
             {
-                Debug.Log("Found valid cached file, Loading!!!");
+                Debug.Log("[AR] Found valid cached file, Loading...");
                 if (userInterface != null) userInterface.SetActive(true);
                 if (progressBar != null) progressBar.SetActive(false);
                 LoadModel(path);
+                onComplete?.Invoke();
                 return;
             }
             else
             {
-                Debug.LogWarning("[PlaceObjects] Cached file is invalid, re-downloading.");
+                Debug.LogWarning("[AR] Cached file invalid, re-downloading.");
                 File.Delete(path);
             }
         }
-        FirebaseStorage storage = FirebaseStorage.DefaultInstance;
-        StorageReference gsReference =storage.GetReferenceFromUrl(url);
-        
 
-        // Start downloading a file
-        if (pb != null) pb.BarValue = 5; // Show activity started
+        // Use GetReference with path (handles spaces/special chars) instead of URL
+        FirebaseStorage storage = FirebaseStorage.DefaultInstance;
+        StorageReference gsReference = storage.GetReference(_storagePath);
+        Debug.Log($"[AR] Downloading from path: {_storagePath}");
+
+        if (pb != null) pb.BarValue = 5;
         Task task = gsReference.GetFileAsync(path, null, CancellationToken.None);
 
         task.ContinueWithOnMainThread(resultTask => {
@@ -200,13 +222,14 @@ public class PlaceObjectsOnPlane : MonoBehaviour
             {
                 Debug.Log("[AR] Download finished.");
                 LoadModel(path);
-                UpdateStatusText(" Move phone slowly over a flat surface to scan");
+                UpdateStatusText("Move phone slowly over a flat table or floor");
             }
             else
             {
                 Debug.LogError("[AR] Download failed: " + (resultTask.Exception?.Message ?? "unknown"));
                 UpdateStatusText("Model load failed - move phone to scan surface");
             }
+            onComplete?.Invoke();
         });
    
     }
