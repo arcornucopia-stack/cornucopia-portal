@@ -1,11 +1,13 @@
 <linker>
+  <assembly fullname="Firebase.App" preserve="all"/>
   <assembly fullname="Firebase.Auth" preserve="all"/>
   <assembly fullname="Firebase.Database" preserve="all"/>
   <assembly fullname="Firebase.Storage" preserve="all"/>
-  <assembly fullname="Firebase.App" preserve="all"/>
-  <assembly fullname="Firebase" preserve="all"/>
+  <assembly fullname="Firebase.Platform" preserve="all"/>
+  <assembly fullname="Firebase.TaskExtension" preserve="all"/>
   <assembly fullname="Google.MiniJSON" preserve="all"/>
-  <assembly fullname="Google.IOSResolver" preserve="all"/>
   <assembly fullname="System" preserve="all"/>
   <assembly fullname="System.Core" preserve="all"/>
+  <assembly fullname="System.Runtime.Serialization" preserve="all"/>
+  <assembly fullname="Newtonsoft.Json" preserve="all"/>
 </linker>
