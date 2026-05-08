@@ -192,6 +192,63 @@ function closeAnalytics() {
   byId("analyticsModal")?.classList.add("hidden");
 }
 
+async function renderQuestionAnalytics(item, globalYes, globalNo, opens, sent) {
+  const section = byId("questionAnalyticsSection");
+  const list = byId("questionAnalyticsList");
+  if (!section || !list) return;
+
+  // Load questions from submission
+  const questionsSnap = await get(dbRef(db, `${ROOT}/submissions/${item.id}/questions`));
+  if (!questionsSnap.exists()) { section.style.display = "none"; return; }
+
+  const questions = Object.values(questionsSnap.val());
+  if (!questions.length) { section.style.display = "none"; return; }
+
+  section.style.display = "";
+  list.innerHTML = "";
+
+  const typeLabels = { yes_no: "Yes / No", multiple_choice: "Multiple Choice", rating: "Rating", open_text: "Open Text" };
+
+  questions.forEach((q) => {
+    const card = document.createElement("div");
+    card.className = "q-analytics-card";
+    card.innerHTML = `<div class="q-analytics-header">
+      <span class="question-type-badge qtype-${q.type}">${typeLabels[q.type] || q.type}</span>
+      <p class="q-analytics-text">${escapeHtml(q.text || "")}</p>
+    </div>`;
+
+    const body = document.createElement("div");
+    body.className = "q-analytics-body";
+
+    if (q.type === "yes_no") {
+      // Use global yes/no since the app maps to a single question
+      const total = globalYes + globalNo || 1;
+      const yesPct = Math.round((globalYes / total) * 100);
+      const noPct = Math.round((globalNo / total) * 100);
+      body.innerHTML = `
+        <div class="vote-bar-row" style="margin-top:8px">
+          <span class="vote-label yes-label">${globalYes} Yes (${yesPct}%)</span>
+          <div class="vote-bar-track">
+            <div class="vote-bar-yes" style="width:${yesPct}%"></div>
+            <div class="vote-bar-no" style="width:${noPct}%"></div>
+          </div>
+          <span class="vote-label no-label">${globalNo} No (${noPct}%)</span>
+        </div>
+        <p class="muted" style="font-size:12px;margin-top:6px">${opens} total response${opens !== 1 ? "s" : ""} out of ${sent || "?"} delivered</p>`;
+    } else if (q.type === "rating") {
+      body.innerHTML = `<p class="muted" style="font-size:13px;margin-top:6px">Rating responses tracked globally — see overall rating above.</p>`;
+    } else if (q.type === "multiple_choice") {
+      const opts = Array.isArray(q.options) ? q.options : [];
+      body.innerHTML = `<p class="muted" style="font-size:13px;margin-top:6px">Per-option tracking coming soon. ${opts.length} option${opts.length !== 1 ? "s" : ""}: ${opts.map(o => escapeHtml(o)).join(", ")}</p>`;
+    } else if (q.type === "open_text") {
+      body.innerHTML = `<p class="muted" style="font-size:13px;margin-top:6px">Open text responses are not aggregated automatically.</p>`;
+    }
+
+    card.appendChild(body);
+    list.appendChild(card);
+  });
+}
+
 function closeDetailsModal() {
   byId("detailsModal")?.classList.add("hidden");
   _detailsSubmissionId = null;
@@ -1290,13 +1347,15 @@ async function openModelAnalytics(item) {
     const opens = yes + no;
     const rating = parseFloat(data.rating) || 0;
     const responseRate = sent > 0 ? Math.round((opens / sent) * 100) : 0;
+    const saveRate = opens > 0 ? Math.round((saved / opens) * 100) : 0;
     const total = yes + no || 1;
 
     const s = (id, val) => { const el = byId(id); if (el) el.textContent = val; };
-    s("statSent", sent);
+    s("statSent", sent || "—");
     s("statOpens", opens);
     s("statSaves", saved);
-    s("statResponseRate", `${responseRate}%`);
+    s("statResponseRate", sent > 0 ? `${responseRate}%` : "—");
+    s("statConversionRate", opens > 0 ? `${saveRate}%` : "—");
     s("statYesLabel", `${yes} Yes`);
     s("statNoLabel", `${no} No`);
     s("statRating", rating.toFixed(1));
@@ -1308,6 +1367,9 @@ async function openModelAnalytics(item) {
 
     const stars = "★".repeat(Math.round(rating)) + "☆".repeat(5 - Math.round(rating));
     s("statStars", stars);
+
+    // Load questions and their response data
+    renderQuestionAnalytics(item, yes, no, opens, sent);
 
     if (loadingEl) loadingEl.classList.add("hidden");
     if (contentEl) contentEl.classList.remove("hidden");

@@ -690,6 +690,19 @@ button[disabled] {
 
 .rating-stars { font-size: 20px; letter-spacing: 2px; }
 
+/* Question analytics cards */
+.q-analytics-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  background: #fafcfb;
+}
+
+.q-analytics-header { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+.q-analytics-text { margin: 0; font-weight: 600; font-size: 14px; flex: 1; }
+.q-analytics-body { margin-top: 4px; }
+
 .model-name-link {
   background: none;
   border: none;

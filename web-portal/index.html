@@ -295,6 +295,8 @@
       <div class="modal-body">
         <div id="analyticsLoading" class="muted" style="text-align:center;padding:20px">Loading…</div>
         <div id="analyticsContent" class="hidden">
+
+          <!-- Top stat cards -->
           <div class="analytics-stats">
             <div class="analytics-stat">
               <span class="analytics-stat-value" id="statSent">—</span>
@@ -312,10 +314,15 @@
               <span class="analytics-stat-value" id="statResponseRate">—</span>
               <span class="analytics-stat-label">Response rate</span>
             </div>
+            <div class="analytics-stat">
+              <span class="analytics-stat-value" id="statConversionRate">—</span>
+              <span class="analytics-stat-label">Save rate</span>
+            </div>
           </div>
 
+          <!-- Yes / No bar -->
           <div class="analytics-section">
-            <h4 class="analytics-section-title">Audience Response</h4>
+            <h4 class="analytics-section-title">Overall Audience Response</h4>
             <div class="vote-bar-row">
               <span class="vote-label yes-label" id="statYesLabel">0 Yes</span>
               <div class="vote-bar-track">
@@ -326,6 +333,7 @@
             </div>
           </div>
 
+          <!-- Rating -->
           <div class="analytics-section">
             <h4 class="analytics-section-title">Rating</h4>
             <div class="rating-display">
@@ -334,6 +342,13 @@
               <span class="muted" style="font-size:13px"> / 5.0</span>
             </div>
           </div>
+
+          <!-- Question responses -->
+          <div class="analytics-section" id="questionAnalyticsSection" style="display:none">
+            <h4 class="analytics-section-title">Question Responses</h4>
+            <div id="questionAnalyticsList"></div>
+          </div>
+
         </div>
       </div>
     </div>
