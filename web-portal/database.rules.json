@@ -31,7 +31,11 @@
         ".read": "auth != null",
         "$modelId": {
           ".read": "auth != null",
-          ".write": "auth != null && root.child('cornucopia/users').child(auth.uid).child('role').val() === 'admin'"
+          ".write": "auth != null && root.child('cornucopia/users').child(auth.uid).child('role').val() === 'admin'",
+          "data": {
+            ".read": "auth != null",
+            ".write": "auth != null"
+          }
         }
       },
 
