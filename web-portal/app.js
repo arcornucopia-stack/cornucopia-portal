@@ -451,7 +451,7 @@ function closeUploadModal(force = false) {
 
   // Reset two-step state so the modal is fresh on next open
   const step1 = byId("uploadStep1");
-  const step2 = byId("uploadStep2");
+  // step2 already declared above for the early-return guard — reuse it
   const wrapper = byId("uploadStepsWrapper");
   if (step1) { step1.style.cssText = ""; step1.classList.remove("upload-step-exiting"); }
   if (step2) { step2.style.cssText = "display:none"; step2.classList.remove("upload-step-entering"); }
