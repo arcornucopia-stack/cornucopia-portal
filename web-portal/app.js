@@ -218,24 +218,7 @@ function bindModals() {
     _modelPageItem = null;
   });
 
-  // Model page – question type toggle
-  byId("mpQuestionTypeSelect")?.addEventListener("change", () => {
-    const isMc = byId("mpQuestionTypeSelect")?.value === "multiple_choice";
-    byId("mpMcOptionsContainer")?.classList.toggle("hidden", !isMc);
-  });
 
-  // Model page – add MC option
-  byId("mpAddMcOption")?.addEventListener("click", () => {
-    const lst = byId("mpMcOptionsList");
-    if (!lst) return;
-    const inp = document.createElement("input");
-    inp.className = "mc-option";
-    inp.placeholder = `Option ${lst.querySelectorAll(".mc-option").length + 1}`;
-    lst.appendChild(inp);
-  });
-
-  // Model page – add question submit
-  byId("mpAddQuestionButton")?.addEventListener("click", addQuestionFromModelPage);
 }
 
 function closeAnalytics() {
@@ -1859,15 +1842,6 @@ async function openModelPage(item) {
   const wt = byId("welcomeText");
   if (wt) wt.textContent = title;
 
-  // Reset the add-question form
-  const mpType = byId("mpQuestionTypeSelect");
-  const mpText = byId("mpQuestionTextInput");
-  const mpMsg  = byId("mpQuestionMessage");
-  if (mpType) mpType.value = "yes_no";
-  if (mpText) mpText.value = "";
-  if (mpMsg)  mpMsg.textContent = "";
-  byId("mpMcOptionsContainer")?.classList.add("hidden");
-
   try {
     const modelKey = item.modelKey;
     let data = { sent: 0, saved: 0, yes: 0, no: 0, rating: "0.0" };
@@ -1927,7 +1901,7 @@ async function renderModelPageQuestions(item, yes, no, opens, sent) {
   list.innerHTML = "";
 
   if (!entries.length) {
-    list.innerHTML = `<div class="empty-questions">No questions yet. Add one below.</div>`;
+    list.innerHTML = `<div class="empty-questions">No questions yet.</div>`;
     return;
   }
 
@@ -2135,40 +2109,6 @@ async function renderModelPageDistribution(item) {
   }
 }
 
-async function addQuestionFromModelPage() {
-  if (!currentDetailSubmissionId) return;
-  const type = byId("mpQuestionTypeSelect")?.value;
-  const text = (byId("mpQuestionTextInput")?.value || "").trim();
-  const msgEl = byId("mpQuestionMessage");
-
-  if (!text) { if (msgEl) msgEl.textContent = "Question text is required."; return; }
-
-  let options = [];
-  if (type === "multiple_choice") {
-    options = [...(byId("mpMcOptionsList")?.querySelectorAll(".mc-option") || [])]
-      .map((el) => el.value.trim()).filter(Boolean);
-    if (options.length < 2) { if (msgEl) msgEl.textContent = "Add at least 2 options."; return; }
-  }
-
-  const qRef = push(dbRef(db, `${ROOT}/submissions/${currentDetailSubmissionId}/questions`));
-  await set(qRef, { type, text, options, createdAt: Date.now() });
-
-  if (msgEl) msgEl.textContent = "";
-  const mpText = byId("mpQuestionTextInput");
-  if (mpText) mpText.value = "";
-
-  // Reload questions on the model page
-  const snap = await get(dbRef(db, `${ROOT}/submissions/${currentDetailSubmissionId}/questions`));
-  const item = _modelPageItem;
-  if (item) {
-    // We don't have fresh yes/no counts here — re-open to reload everything
-    await renderModelPageQuestions(item, 0, 0, 0, 0);
-  }
-
-  // Sync submissions cache
-  const cached = submissionsCache.find((x) => x.id === currentDetailSubmissionId);
-  if (cached) { cached.questions = snap.exists() ? snap.val() : {}; renderSubmissionRows(); }
-}
 
 function setAdminVisibility(isAdmin) {
   document.querySelectorAll(".admin-only").forEach((el) => {
