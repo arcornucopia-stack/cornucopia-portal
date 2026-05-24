@@ -33,6 +33,10 @@ const auth = getAuth(app);
 const db = getDatabase(app);
 const storage = getStorage(app);
 
+// ── Version stamp – if you don't see this line in the Console after page load,
+//    the browser is still serving old cached code. Hard-reload with Ctrl+Shift+R.
+console.log("%c[Cornucopia] app.js v4 loaded ✓", "color:green;font-weight:bold;font-size:14px");
+
 const authScreen = byId("authScreen");
 const appScreen = byId("appScreen");
 const emailInput = byId("emailInput");
@@ -137,14 +141,35 @@ document.addEventListener("keydown", (e) => {
 });
 
 function bindModals() {
-  // Upload modal
+  // Upload modal – open
   byId("openUploadModal")?.addEventListener("click", () => {
     byId("uploadModal")?.classList.remove("hidden");
   });
-  byId("closeUploadModal")?.addEventListener("click", closeUploadModal);
+  // Upload modal – Cancel and Done replace the old X button.
+  // Pass force=true so they can close the modal even while step 2 is showing.
+  byId("cancelUploadModal")?.addEventListener("click", () => closeUploadModal(true));
+  byId("doneUploadModal")?.addEventListener("click", () => closeUploadModal(true));
+  // Overlay click still closes
   byId("uploadModal")?.addEventListener("click", (e) => {
     if (e.target === byId("uploadModal")) closeUploadModal();
   });
+
+  // Upload modal – step 2 question type toggle (MC options)
+  byId("uploadQuestionTypeSelect")?.addEventListener("change", () => {
+    const isMc = byId("uploadQuestionTypeSelect").value === "multiple_choice";
+    byId("uploadMcOptionsContainer")?.classList.toggle("hidden", !isMc);
+  });
+  // Upload modal – add MC option row
+  byId("uploadAddMcOption")?.addEventListener("click", () => {
+    const list = byId("uploadMcOptionsList");
+    if (!list) return;
+    const inp = document.createElement("input");
+    inp.className = "mc-option";
+    inp.placeholder = `Option ${list.querySelectorAll(".mc-option").length + 1}`;
+    list.appendChild(inp);
+  });
+  // Upload modal – add question to newly uploaded model
+  byId("uploadAddQuestionButton")?.addEventListener("click", addQuestionToUploadModal);
 
   // Model detail modal
   byId("closeModelDetail")?.addEventListener("click", closeModelDetail);
@@ -401,7 +426,21 @@ function showToast(message, type = "success") {
   setTimeout(() => toast.classList.add("hidden"), 5000);
 }
 
-function closeUploadModal() {
+/**
+ * Close the upload modal.
+ * @param {boolean} force  When true, close even if step 2 is showing (used by Done / Cancel).
+ *                         When false (default), the close is blocked while step 2 is active so
+ *                         that Escape / overlay clicks cannot dismiss the question-entry screen.
+ */
+function closeUploadModal(force = false) {
+  // Block any non-explicit close while the user is on step 2 (questions screen).
+  // Escape, overlay click, and any background code all arrive here with force=false.
+  const step2 = byId("uploadStep2");
+  if (!force && step2?.style.display === "grid") {
+    console.log("[Cornucopia] closeUploadModal blocked – still on step 2");
+    return;
+  }
+  console.trace("[Cornucopia] closeUploadModal executing (force=" + force + ")");
   byId("uploadModal")?.classList.add("hidden");
   if (uploadProgress) uploadProgress.value = 0;
   if (uploadMessage) uploadMessage.textContent = "";
@@ -409,7 +448,159 @@ function closeUploadModal() {
   const descInput = byId("modelDescriptionInput");
   if (descInput) descInput.value = "";
   if (glbInput) glbInput.value = "";
+
+  // Reset two-step state so the modal is fresh on next open
+  const step1 = byId("uploadStep1");
+  const step2 = byId("uploadStep2");
+  const wrapper = byId("uploadStepsWrapper");
+  if (step1) { step1.style.cssText = ""; step1.classList.remove("upload-step-exiting"); }
+  if (step2) { step2.style.cssText = "display:none"; step2.classList.remove("upload-step-entering"); }
+  if (wrapper) wrapper.style.height = "";
+  const titleEl = byId("uploadModalTitle");
+  if (titleEl) titleEl.textContent = "New Upload";
+  byId("doneUploadModal")?.classList.add("hidden");
+  const qtInput = byId("uploadQuestionTextInput");
+  if (qtInput) qtInput.value = "";
+  const qMsg = byId("uploadQuestionMessage");
+  if (qMsg) qMsg.textContent = "";
+  byId("uploadMcOptionsContainer")?.classList.add("hidden");
+  const typeSelect = byId("uploadQuestionTypeSelect");
+  if (typeSelect) typeSelect.value = "yes_no";
+  const mcList = byId("uploadMcOptionsList");
+  if (mcList) mcList.innerHTML = '<input class="mc-option" placeholder="Option 1" /><input class="mc-option" placeholder="Option 2" />';
 }
+
+// ─── Upload modal two-step transition ────────────────────────────────────────
+
+/**
+ * After a successful upload, slide step 2 (question input) up into the modal
+ * within the same paint cycle — no multi-phase delays that background work
+ * could interrupt.
+ */
+function transitionUploadToQuestions(submissionId) {
+  console.log("[Cornucopia] transitionUploadToQuestions called, submissionId =", submissionId);
+  // Guarantee the modal is open no matter what
+  byId("uploadModal")?.classList.remove("hidden");
+
+  currentDetailSubmissionId = submissionId;
+
+  const wrapper = byId("uploadStepsWrapper");
+  const step1   = byId("uploadStep1");
+  const step2   = byId("uploadStep2");
+  if (!wrapper || !step1 || !step2) return;
+
+  // Seed step 2 content while it is still invisible
+  renderQuestionsInUploadModal({});
+  const qtInput    = byId("uploadQuestionTextInput");
+  const qMsg       = byId("uploadQuestionMessage");
+  const typeSelect = byId("uploadQuestionTypeSelect");
+  if (qtInput)    qtInput.value = "";
+  if (qMsg)       qMsg.textContent = "";
+  if (typeSelect) typeSelect.value = "yes_no";
+  byId("uploadMcOptionsContainer")?.classList.add("hidden");
+  byId("uploadModalTitle") && (byId("uploadModalTitle").textContent = "Add Questions");
+
+  // ── Instant swap: hide step 1, place step 2 just below viewport ──
+  step1.style.display  = "none";
+  step2.style.display  = "grid";
+  step2.style.opacity  = "0";
+  step2.style.transform = "translateY(36px)";
+
+  // Force the browser to commit step 2's off-screen position before we
+  // start the transition (a single reflow is all we need)
+  void step2.offsetHeight;
+
+  // Animate step 2 into its natural position in one smooth motion
+  step2.style.transition = "transform 0.36s cubic-bezier(0.4,0,0.2,1), opacity 0.3s ease";
+  step2.style.transform  = "translateY(0)";
+  step2.style.opacity    = "1";
+
+  // After the animation settles, strip the inline transition properties
+  // and reveal the Done button
+  setTimeout(() => {
+    step2.style.transition = "";
+    step2.style.transform  = "";
+    step2.style.opacity    = "";
+    byId("doneUploadModal")?.classList.remove("hidden");
+  }, 400);
+}
+
+function renderQuestionsInUploadModal(questions) {
+  const list = byId("uploadQuestionsList");
+  if (!list) return;
+  list.innerHTML = "";
+  const entries = Object.entries(questions);
+  if (!entries.length) {
+    list.innerHTML = `<div class="empty-questions">No questions yet. Add one below to start collecting feedback.</div>`;
+    return;
+  }
+  const typeLabels = { yes_no: "Yes / No", multiple_choice: "Multiple Choice", rating: "Rating (1 – 5)", open_text: "Open Text" };
+  entries.forEach(([qId, q]) => {
+    const card = document.createElement("div");
+    card.className = "question-card";
+    const optionsHtml = (q.type === "multiple_choice" && Array.isArray(q.options) && q.options.length)
+      ? `<ul class="question-options">${q.options.map((o) => `<li>${escapeHtml(o)}</li>`).join("")}</ul>`
+      : q.type === "rating"
+        ? `<ul class="question-options"><li>1</li><li>2</li><li>3</li><li>4</li><li>5</li></ul>`
+        : "";
+    card.innerHTML = `
+      <div class="question-card-body">
+        <span class="question-type-badge qtype-${q.type}">${typeLabels[q.type] || q.type}</span>
+        <p style="margin-top:6px">${escapeHtml(q.text || "")}</p>
+        ${optionsHtml}
+      </div>
+      <button class="delete-question-btn" data-qid="${qId}" title="Remove question">✕</button>
+    `;
+    card.querySelector(".delete-question-btn").addEventListener("click", () => deleteQuestionFromUploadModal(qId));
+    list.appendChild(card);
+  });
+}
+
+async function addQuestionToUploadModal() {
+  if (!currentDetailSubmissionId) return;
+  const type    = byId("uploadQuestionTypeSelect")?.value;
+  const text    = (byId("uploadQuestionTextInput")?.value || "").trim();
+  const msgEl   = byId("uploadQuestionMessage");
+
+  if (!text) { if (msgEl) msgEl.textContent = "Question text is required."; return; }
+
+  let options = [];
+  if (type === "multiple_choice") {
+    options = [...(byId("uploadMcOptionsList")?.querySelectorAll(".mc-option") || [])]
+      .map((el) => el.value.trim()).filter(Boolean);
+    if (options.length < 2) { if (msgEl) msgEl.textContent = "Add at least 2 options."; return; }
+  }
+
+  const questionRef = push(dbRef(db, `${ROOT}/submissions/${currentDetailSubmissionId}/questions`));
+  await set(questionRef, { type, text, options, createdAt: Date.now() });
+
+  if (msgEl) msgEl.textContent = "";
+  const textInput = byId("uploadQuestionTextInput");
+  if (textInput) textInput.value = "";
+
+  const snap = await get(dbRef(db, `${ROOT}/submissions/${currentDetailSubmissionId}/questions`));
+  renderQuestionsInUploadModal(snap.exists() ? snap.val() : {});
+
+  // Keep the submissions table question count in sync
+  const cached = submissionsCache.find((x) => x.id === currentDetailSubmissionId);
+  if (cached) { cached.questions = snap.exists() ? snap.val() : {}; renderSubmissionRows(); }
+}
+
+async function deleteQuestionFromUploadModal(questionId) {
+  if (!currentDetailSubmissionId) return;
+  try {
+    await set(dbRef(db, `${ROOT}/submissions/${currentDetailSubmissionId}/questions/${questionId}`), null);
+    const snap = await get(dbRef(db, `${ROOT}/submissions/${currentDetailSubmissionId}/questions`));
+    renderQuestionsInUploadModal(snap.exists() ? snap.val() : {});
+    const cached = submissionsCache.find((x) => x.id === currentDetailSubmissionId);
+    if (cached) { cached.questions = snap.exists() ? snap.val() : {}; renderSubmissionRows(); }
+  } catch (err) {
+    const msgEl = byId("uploadQuestionMessage");
+    if (msgEl) msgEl.textContent = `Could not delete question: ${err.message || err}`;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 function closeModelDetail() {
   byId("modelDetailModal")?.classList.add("hidden");
@@ -578,19 +769,22 @@ async function uploadModel() {
           await pushSubmissionToApp(submissionId, { silent: true });
         }
 
-        closeUploadModal();
         const isAdminUpload = normalizeRole(currentProfile.role) === "admin";
         showToast(
           isAdminUpload
             ? "🎉 Model uploaded and published to the app!"
             : "🎉 Model uploaded successfully! Our team will review it shortly."
         );
+        // Transition to step 2 immediately — before any data refresh so the
+        // animation fires right away and nothing can close the modal first.
+        transitionUploadToQuestions(submissionId);
+        // Refresh data in the background (no await — runs while step 2 is shown)
+        refreshAll();
         // Notify admins of new upload (partners only)
         if (!isAdminUpload) {
           const partnerName = currentProfile.businessName || currentProfile.name || businessId;
-          await notifyAllAdmins(`📦 ${partnerName} submitted a new model for review.`, "info");
+          notifyAllAdmins(`📦 ${partnerName} submitted a new model for review.`, "info");
         }
-        await refreshAll();
       } catch (err) {
         uploadMessage.textContent = `Upload completed but publish step failed: ${err.message || err}`;
       } finally {
