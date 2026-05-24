@@ -645,7 +645,9 @@ onAuthStateChanged(auth, async (user) => {
   // Show admin business column in submissions table
   const isAdmin = normalizedRole === "admin";
   document.querySelectorAll(".admin-only-th").forEach((th) => {
-    th.style.display = isAdmin ? "" : "none";
+    // Must use "table-cell", not "" — the CSS default is display:none so
+    // clearing the inline style would leave the CSS rule in effect.
+    th.style.display = isAdmin ? "table-cell" : "none";
   });
 
   setAdminVisibility(isAdmin);
