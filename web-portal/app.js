@@ -211,6 +211,31 @@ function bindModals() {
   });
   byId("addAttributeRow")?.addEventListener("click", addAttributeRow);
   byId("saveDetails")?.addEventListener("click", saveModelDetails);
+
+  // Model page – back button
+  byId("backToUploads")?.addEventListener("click", () => {
+    setActiveScreen("uploads");
+    _modelPageItem = null;
+  });
+
+  // Model page – question type toggle
+  byId("mpQuestionTypeSelect")?.addEventListener("change", () => {
+    const isMc = byId("mpQuestionTypeSelect")?.value === "multiple_choice";
+    byId("mpMcOptionsContainer")?.classList.toggle("hidden", !isMc);
+  });
+
+  // Model page – add MC option
+  byId("mpAddMcOption")?.addEventListener("click", () => {
+    const lst = byId("mpMcOptionsList");
+    if (!lst) return;
+    const inp = document.createElement("input");
+    inp.className = "mc-option";
+    inp.placeholder = `Option ${lst.querySelectorAll(".mc-option").length + 1}`;
+    lst.appendChild(inp);
+  });
+
+  // Model page – add question submit
+  byId("mpAddQuestionButton")?.addEventListener("click", addQuestionFromModelPage);
 }
 
 function closeAnalytics() {
@@ -1162,7 +1187,7 @@ async function loadPublishedModels() {
 
 async function loadDispatchData() {
   if (!currentProfile || (currentProfile.role || "").toLowerCase() !== "admin") return;
-  dispatchMessage.textContent = "";
+  if (dispatchMessage) dispatchMessage.textContent = "";
 
   try {
     const [modelsSnap, usersSnap] = await Promise.all([
@@ -1361,7 +1386,7 @@ async function savePartnerSubscribersMapping() {
 
 async function loadPartnerDeliveryData() {
   if (!currentProfile || (currentProfile.role || "").toLowerCase() === "admin") return;
-  partnerDeliveryMessage.textContent = "";
+  if (partnerDeliveryMessage) partnerDeliveryMessage.textContent = "";
 
   try {
     const [submissionsSnap, usersSnap] = await Promise.all([
@@ -1803,11 +1828,346 @@ function renderSubmissionRows() {
       </td>
       <td>${formatTs(item.createdAt)}</td>
     `;
-    tr.querySelector(".manage-questions-btn").addEventListener("click", () => openModelDetail(item));
-    tr.querySelector("[data-analytics]").addEventListener("click", () => openModelAnalytics(item));
+    tr.querySelector(".manage-questions-btn").addEventListener("click", () => openModelPage(item));
+    tr.querySelector("[data-analytics]").addEventListener("click", () => openModelPage(item));
     tr.querySelector(".model-details-btn").addEventListener("click", () => openModelDetailsEditor(item));
     mySubmissionsBody.appendChild(tr);
   });
+}
+
+// ─── Model Page (full-screen detail view) ────────────────────────────────────
+
+let _modelPageItem = null;
+
+async function openModelPage(item) {
+  if (!item?.id) return;
+  closeUploadModal();
+  _modelPageItem = item;
+  currentDetailSubmissionId = item.id;
+
+  const title = item.displayName || item.fileName || "Model";
+  const titleEl = byId("modelPageTitle");
+  const metaEl  = byId("modelPageMeta");
+  if (titleEl) titleEl.textContent = title;
+  if (metaEl)  metaEl.textContent  = `Status: ${statusLabel(item)} · Uploaded ${formatTs(item.createdAt)}`;
+
+  byId("modelPageLoading")?.classList.remove("hidden");
+  byId("modelPageContent")?.classList.add("hidden");
+
+  setActiveScreen("modelPage");
+  // Override the topbar title that setActiveScreen sets
+  const wt = byId("welcomeText");
+  if (wt) wt.textContent = title;
+
+  // Reset the add-question form
+  const mpType = byId("mpQuestionTypeSelect");
+  const mpText = byId("mpQuestionTextInput");
+  const mpMsg  = byId("mpQuestionMessage");
+  if (mpType) mpType.value = "yes_no";
+  if (mpText) mpText.value = "";
+  if (mpMsg)  mpMsg.textContent = "";
+  byId("mpMcOptionsContainer")?.classList.add("hidden");
+
+  try {
+    const modelKey = item.modelKey;
+    let data = { sent: 0, saved: 0, yes: 0, no: 0, rating: "0.0" };
+    if (modelKey) {
+      const snap = await get(dbRef(db, `${ROOT}/models/${modelKey}/data`));
+      if (snap.exists()) data = { ...data, ...snap.val() };
+    }
+
+    const sent   = toInt(data.sent, 0) || toInt(item.pushedCount, 0);
+    const saved  = toInt(data.saved, 0);
+    const yes    = toInt(data.yes, 0);
+    const no     = toInt(data.no, 0);
+    const opens  = yes + no;
+    const rating = parseFloat(data.rating) || 0;
+    const responseRate = sent  > 0 ? Math.round((opens / sent)  * 100) : 0;
+    const saveRate     = opens > 0 ? Math.round((saved / opens) * 100) : 0;
+    const stars  = "★".repeat(Math.round(rating)) + "☆".repeat(5 - Math.round(rating));
+
+    // Render stats row
+    const statsRow = byId("modelPageStatsRow");
+    if (statsRow) {
+      const stats = [
+        { value: sent  || "—",                          label: "Sent To"       },
+        { value: opens,                                  label: "Opens"         },
+        { value: saved,                                  label: "Saves"         },
+        { value: opens > 0 ? `${saveRate}%`     : "—",  label: "Save Rate"     },
+        { value: opens,                                  label: "Response"      },
+        { value: sent  > 0 ? `${responseRate}%` : "—",  label: "Response Rate" },
+        { value: rating.toFixed(1),                      label: "Rating"        },
+        { value: stars,                                  label: "/ 5.0"         },
+      ];
+      statsRow.innerHTML = stats.map((s) => `
+        <div class="mp-stat">
+          <span class="mp-stat-value">${escapeHtml(String(s.value))}</span>
+          <span class="mp-stat-label">${escapeHtml(s.label)}</span>
+        </div>`).join("");
+    }
+
+    await renderModelPageQuestions(item, yes, no, opens, sent);
+    await renderModelPageDistribution(item);
+
+    byId("modelPageLoading")?.classList.add("hidden");
+    byId("modelPageContent")?.classList.remove("hidden");
+  } catch (err) {
+    const el = byId("modelPageLoading");
+    if (el) el.textContent = `Could not load: ${err.message || err}`;
+  }
+}
+
+async function renderModelPageQuestions(item, yes, no, opens, sent) {
+  const list = byId("modelPageQuestionsList");
+  if (!list) return;
+
+  const snap = await get(dbRef(db, `${ROOT}/submissions/${item.id}/questions`));
+  const entries = snap.exists() ? Object.entries(snap.val()) : [];
+
+  list.innerHTML = "";
+
+  if (!entries.length) {
+    list.innerHTML = `<div class="empty-questions">No questions yet. Add one below.</div>`;
+    return;
+  }
+
+  const typeLabels = {
+    yes_no: "Yes / No", multiple_choice: "Multiple Choice",
+    rating: "Rating (1–5)", open_text: "Open Text"
+  };
+
+  const total  = yes + no || 1;
+  const yesPct = Math.round((yes / total) * 100);
+  const noPct  = Math.round((no  / total) * 100);
+
+  entries.forEach(([qId, q]) => {
+    let analyticsHtml = "";
+    if (q.type === "yes_no") {
+      analyticsHtml = `
+        <div class="vote-bar-row" style="margin-top:8px">
+          <span class="vote-label yes-label">${yes} Yes (${yesPct}%)</span>
+          <div class="vote-bar-track">
+            <div class="vote-bar-yes" style="width:${yesPct}%"></div>
+            <div class="vote-bar-no"  style="width:${noPct}%"></div>
+          </div>
+          <span class="vote-label no-label">${no} No (${noPct}%)</span>
+        </div>
+        <p class="muted" style="font-size:12px;margin-top:6px">
+          ${opens} total response${opens !== 1 ? "s" : ""} out of ${sent || "?"} delivered
+        </p>`;
+    } else if (q.type === "rating") {
+      analyticsHtml = `<p class="muted" style="font-size:13px;margin-top:6px">Rating tracked globally — see Rating stat above.</p>`;
+    } else if (q.type === "multiple_choice") {
+      const opts = Array.isArray(q.options) ? q.options : [];
+      analyticsHtml = `<p class="muted" style="font-size:13px;margin-top:6px">${opts.length} option${opts.length !== 1 ? "s" : ""}: ${opts.map((o) => escapeHtml(o)).join(", ")}</p>`;
+    } else {
+      analyticsHtml = `<p class="muted" style="font-size:13px;margin-top:6px">Open text responses are collected in-app.</p>`;
+    }
+
+    const card = document.createElement("div");
+    card.className = "q-analytics-card";
+    card.innerHTML = `
+      <div class="q-analytics-header" style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
+        <span class="question-type-badge qtype-${q.type}">${typeLabels[q.type] || q.type}</span>
+        <p class="q-analytics-text" style="flex:1;margin:0">${escapeHtml(q.text || "")}</p>
+        <button class="secondary mp-del-q-btn" data-qid="${qId}" type="button"
+                style="font-size:12px;padding:4px 10px;flex-shrink:0">✕ Remove</button>
+      </div>
+      <div class="q-analytics-body">${analyticsHtml}</div>
+    `;
+
+    card.querySelector(".mp-del-q-btn").addEventListener("click", async () => {
+      if (!currentDetailSubmissionId) return;
+      try {
+        await set(dbRef(db, `${ROOT}/submissions/${currentDetailSubmissionId}/questions/${qId}`), null);
+        const updated = await get(dbRef(db, `${ROOT}/submissions/${currentDetailSubmissionId}/questions`));
+        // Refresh page questions list
+        await renderModelPageQuestions(item, yes, no, opens, sent);
+        // Keep the cache in sync
+        const cached = submissionsCache.find((x) => x.id === currentDetailSubmissionId);
+        if (cached) { cached.questions = updated.exists() ? updated.val() : {}; renderSubmissionRows(); }
+      } catch (err) { showToast(`Delete failed: ${err.message || err}`, "error"); }
+    });
+
+    list.appendChild(card);
+  });
+}
+
+async function renderModelPageDistribution(item) {
+  const countEl   = byId("modelPageDistCount");
+  const listEl    = byId("modelPageUsersList");
+  const msgEl     = byId("modelPageSendMessage");
+  const sendBtn   = byId("modelPageSendButton");
+  const actionsEl = byId("modelPageSendActions");
+  if (!listEl) return;
+
+  const isAdmin  = normalizeRole(currentProfile?.role) === "admin";
+  const modelKey = item.modelKey;
+
+  // Partners can only send if the model is approved
+  if (!isAdmin && item.status !== "approved") {
+    listEl.innerHTML = `<p class="muted">Model must be approved before it can be sent to users.</p>`;
+    if (actionsEl) actionsEl.style.display = "none";
+    return;
+  }
+
+  if (!modelKey) {
+    listEl.innerHTML = `<p class="muted">Model has not been published to the app yet.</p>`;
+    if (actionsEl) actionsEl.style.display = "none";
+    return;
+  }
+
+  listEl.innerHTML = `<p class="muted" style="padding:8px 0">Loading users…</p>`;
+
+  try {
+    const [usersSnap, subsSnap] = await Promise.all([
+      get(dbRef(db, `${ROOT}/users`)),
+      isAdmin
+        ? Promise.resolve(null)
+        : get(dbRef(db, `${ROOT}/partners/${currentUser.uid}/subscribers`))
+    ]);
+
+    const allUsers     = usersSnap.exists() ? usersSnap.val() : {};
+    const subscribers  = (!isAdmin && subsSnap?.exists()) ? Object.keys(subsSnap.val()) : null;
+
+    // Find which users already have this model
+    const distUsers = new Set();
+    const checks = Object.keys(allUsers).map((uid) =>
+      get(dbRef(db, `${ROOT}/users/${uid}/models/${modelKey}`))
+        .then((s) => { if (s.exists()) distUsers.add(uid); })
+        .catch(() => {})
+    );
+    await Promise.all(checks);
+
+    if (countEl) countEl.textContent = distUsers.size;
+
+    // Build eligible user list
+    const eligible = Object.entries(allUsers).filter(([uid, u]) => {
+      const role = String(u?.role || "").toLowerCase();
+      if (role === "admin" || role === "partner") return false;
+      if (subscribers !== null && !subscribers.includes(uid)) return false;
+      return true;
+    });
+
+    listEl.innerHTML = "";
+
+    if (!eligible.length) {
+      listEl.innerHTML = `<p class="muted">No eligible users found.</p>`;
+      if (actionsEl) actionsEl.style.display = "none";
+      return;
+    }
+
+    if (actionsEl) actionsEl.style.display = "";
+
+    // Select-all row
+    const saLabel = document.createElement("label");
+    saLabel.className = "user-row select-all-row";
+    saLabel.innerHTML = `<input type="checkbox" class="mp-sa-cb" /> <span><strong>Select all</strong></span>`;
+    listEl.appendChild(saLabel);
+
+    eligible.forEach(([uid, u]) => {
+      const alreadySent = distUsers.has(uid);
+      const name = u?.name || u?.email || u?.businessName || uid;
+      const label = document.createElement("label");
+      label.className = `user-row${alreadySent ? " user-row-sent" : ""}`;
+      label.innerHTML = `
+        <input type="checkbox" value="${escapeHtml(uid)}"
+               ${alreadySent ? 'checked disabled title="Already sent"' : ""} />
+        <span>${escapeHtml(name)} <small>(${escapeHtml(uid)})</small></span>
+        ${alreadySent ? '<span class="dist-sent-badge">✓ sent</span>' : ""}`;
+      listEl.appendChild(label);
+    });
+
+    // Wire select-all
+    const saCb = listEl.querySelector(".mp-sa-cb");
+    const cbs  = () => [...listEl.querySelectorAll("input[type='checkbox']:not(.mp-sa-cb):not(:disabled)")];
+    if (saCb) {
+      saCb.addEventListener("change", () => cbs().forEach((c) => { c.checked = saCb.checked; }));
+    }
+
+    // Wire send button
+    if (sendBtn) {
+      sendBtn.onclick = async () => {
+        const selected = cbs().filter((c) => c.checked).map((c) => c.value);
+        if (!selected.length) { if (msgEl) msgEl.textContent = "Select at least one user."; return; }
+
+        sendBtn.disabled = true;
+        sendBtn.textContent = "Sending…";
+        if (msgEl) msgEl.textContent = "";
+        let assigned = 0;
+
+        try {
+          for (const uid of selected) {
+            const ref = dbRef(db, `${ROOT}/users/${uid}/models/${modelKey}`);
+            if ((await get(ref)).exists()) continue;
+            await set(ref, { MName: modelKey, saved: false, Rating: "0.0", answer: "pending" });
+            assigned += 1;
+          }
+
+          // Update sent count in model data
+          if (assigned > 0) {
+            try {
+              const mdr = dbRef(db, `${ROOT}/models/${modelKey}/data`);
+              const cur = (await get(mdr)).val() || {};
+              await update(mdr, { sent: toInt(cur.sent, 0) + assigned });
+            } catch (e) { console.warn("Could not update sent count:", e); }
+          }
+
+          showToast(`✓ Model sent to ${assigned} user${assigned !== 1 ? "s" : ""}.`);
+          if (msgEl) msgEl.textContent = `Sent to ${assigned} user${assigned !== 1 ? "s" : ""}.`;
+
+          // Refresh distribution panel with updated counts
+          await renderModelPageDistribution(item);
+
+          // Sync cache
+          const cached = submissionsCache.find((x) => x.id === item.id);
+          if (cached) { cached.pushedCount = toInt(cached.pushedCount, 0) + assigned; renderSubmissionRows(); }
+        } catch (err) {
+          if (msgEl) msgEl.textContent = `Send failed: ${err.message || err}`;
+        } finally {
+          sendBtn.disabled = false;
+          sendBtn.textContent = "Send to Selected";
+        }
+      };
+    }
+  } catch (err) {
+    listEl.innerHTML = `<p class="muted">Could not load users: ${err.message || err}</p>`;
+  }
+}
+
+async function addQuestionFromModelPage() {
+  if (!currentDetailSubmissionId) return;
+  const type = byId("mpQuestionTypeSelect")?.value;
+  const text = (byId("mpQuestionTextInput")?.value || "").trim();
+  const msgEl = byId("mpQuestionMessage");
+
+  if (!text) { if (msgEl) msgEl.textContent = "Question text is required."; return; }
+
+  let options = [];
+  if (type === "multiple_choice") {
+    options = [...(byId("mpMcOptionsList")?.querySelectorAll(".mc-option") || [])]
+      .map((el) => el.value.trim()).filter(Boolean);
+    if (options.length < 2) { if (msgEl) msgEl.textContent = "Add at least 2 options."; return; }
+  }
+
+  const qRef = push(dbRef(db, `${ROOT}/submissions/${currentDetailSubmissionId}/questions`));
+  await set(qRef, { type, text, options, createdAt: Date.now() });
+
+  if (msgEl) msgEl.textContent = "";
+  const mpText = byId("mpQuestionTextInput");
+  if (mpText) mpText.value = "";
+
+  // Reload questions on the model page
+  const snap = await get(dbRef(db, `${ROOT}/submissions/${currentDetailSubmissionId}/questions`));
+  const item = _modelPageItem;
+  if (item) {
+    // We don't have fresh yes/no counts here — re-open to reload everything
+    await renderModelPageQuestions(item, 0, 0, 0, 0);
+  }
+
+  // Sync submissions cache
+  const cached = submissionsCache.find((x) => x.id === currentDetailSubmissionId);
+  if (cached) { cached.questions = snap.exists() ? snap.val() : {}; renderSubmissionRows(); }
 }
 
 function setAdminVisibility(isAdmin) {

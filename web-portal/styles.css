@@ -970,3 +970,112 @@ button[disabled] {
   .cards { grid-template-columns: repeat(2, 1fr); }
   .modal-panel { max-width: 100%; }
 }
+
+/* ─── Model Page ───────────────────────────────────────────────────────────── */
+
+.mp-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mp-back-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+}
+.mp-back-btn:hover { text-decoration: underline; }
+.mp-breadcrumb-sep { color: var(--muted); }
+.mp-breadcrumb-title { font-weight: 700; color: var(--ink); font-size: 15px; }
+
+.mp-stats-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+.mp-stat {
+  flex: 1;
+  min-width: 90px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 12px;
+  text-align: center;
+}
+.mp-stat-value {
+  display: block;
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--accent);
+  line-height: 1.2;
+}
+.mp-stat-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.mp-columns {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .mp-columns { grid-template-columns: 1fr; }
+  .mp-col-right { order: -1; }
+}
+
+.mp-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.mp-card:last-child { margin-bottom: 0; }
+
+.mp-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 14px;
+}
+
+.mp-preview-card {
+  aspect-ratio: 4/3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 140px;
+}
+.mp-preview-placeholder {
+  font-size: 28px;
+  font-weight: 800;
+  color: #d8e8e2;
+  letter-spacing: 0.15em;
+}
+
+/* "already sent" badge in distribution list */
+.user-row-sent { opacity: 0.6; }
+.dist-sent-badge {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  background: #e8f5f0;
+  border-radius: 6px;
+  padding: 2px 7px;
+  flex-shrink: 0;
+}

@@ -101,21 +101,6 @@
             <tbody id="mySubmissionsBody"></tbody>
           </table>
 
-          <div class="partner-only" style="margin-top:24px">
-            <h3>Send Approved Models To Users</h3>
-            <div class="upload-box">
-              <select id="partnerApprovedModelSelect">
-                <option value="">Select approved model...</option>
-              </select>
-              <div id="partnerDeliveryUsersList" class="users-list"></div>
-              <div class="row-actions">
-                <button id="refreshPartnerDeliveryButton" class="secondary" type="button">Refresh Models/Users</button>
-                <button id="sendPartnerModelButton" class="success" type="button">Send Model To Selected Users</button>
-              </div>
-              <p id="partnerDeliveryMessage" class="muted"></p>
-            </div>
-          </div>
-
           <div class="admin-only">
             <h3>Published models (App live list)</h3>
             <table>
@@ -141,20 +126,6 @@
             </div>
           </div>
 
-          <div class="admin-only">
-            <h3>Send Existing Model To Users</h3>
-            <div class="upload-box">
-              <select id="dispatchModelSelect">
-                <option value="">Select model...</option>
-              </select>
-              <div id="dispatchUsersList" class="users-list"></div>
-              <div class="row-actions">
-                <button id="refreshDispatchDataButton" class="secondary" type="button">Refresh Users/Models</button>
-                <button id="sendModelToUsersButton" class="success" type="button">Send To Selected Users</button>
-              </div>
-              <p id="dispatchMessage" class="muted"></p>
-            </div>
-          </div>
         </section>
 
         <section id="approvals" class="screen admin-only">
@@ -166,6 +137,88 @@
             <tbody id="pendingBody"></tbody>
           </table>
         </section>
+
+        <!-- ── Model detail page – navigated to from My Uploads ── -->
+        <section id="modelPage" class="screen">
+
+          <!-- Breadcrumb -->
+          <div class="mp-breadcrumb">
+            <button class="mp-back-btn" id="backToUploads" type="button">← My Uploads</button>
+            <span class="mp-breadcrumb-sep">›</span>
+            <span id="modelPageTitle" class="mp-breadcrumb-title">Model</span>
+          </div>
+          <p id="modelPageMeta" class="muted" style="margin:4px 0 20px"></p>
+
+          <!-- Loading spinner -->
+          <div id="modelPageLoading" class="muted" style="padding:40px 0;text-align:center">Loading…</div>
+
+          <!-- Main content (hidden until loaded) -->
+          <div id="modelPageContent" class="hidden">
+
+            <!-- Stats row (filled dynamically) -->
+            <div id="modelPageStatsRow" class="mp-stats-row"></div>
+
+            <!-- Two-column layout -->
+            <div class="mp-columns">
+
+              <!-- Left: question responses + add question -->
+              <div class="mp-col-left">
+
+                <div class="mp-card">
+                  <h3 class="mp-section-title">Question Responses</h3>
+                  <div id="modelPageQuestionsList"></div>
+                </div>
+
+                <div class="mp-card">
+                  <h3 class="mp-section-title">Add a Question</h3>
+                  <div class="add-question-form">
+                    <label class="field-label">Question type</label>
+                    <select id="mpQuestionTypeSelect">
+                      <option value="yes_no">Yes / No</option>
+                      <option value="multiple_choice">Multiple Choice</option>
+                      <option value="rating">Rating (1 – 5)</option>
+                      <option value="open_text">Open Text</option>
+                    </select>
+                    <label class="field-label">Question text</label>
+                    <input id="mpQuestionTextInput" placeholder="e.g. Would you wear this to a dinner party?" />
+                    <div id="mpMcOptionsContainer" class="hidden">
+                      <label class="field-label">Answer options</label>
+                      <div id="mpMcOptionsList">
+                        <input class="mc-option" placeholder="Option 1" />
+                        <input class="mc-option" placeholder="Option 2" />
+                      </div>
+                      <button id="mpAddMcOption" type="button" class="secondary" style="margin-top:6px">+ Add option</button>
+                    </div>
+                    <button id="mpAddQuestionButton" type="button">Add Question</button>
+                    <p id="mpQuestionMessage" class="muted"></p>
+                  </div>
+                </div>
+
+              </div>
+
+              <!-- Right: model preview + distribution -->
+              <div class="mp-col-right">
+
+                <div class="mp-card mp-preview-card">
+                  <div class="mp-preview-placeholder">MODEL</div>
+                </div>
+
+                <div class="mp-card">
+                  <h3 class="mp-section-title">
+                    User distribution
+                    (<span id="modelPageDistCount">0</span>)
+                  </h3>
+                  <div id="modelPageUsersList" class="users-list"></div>
+                  <div id="modelPageSendActions" class="row-actions" style="margin-top:10px">
+                    <button id="modelPageSendButton" type="button" class="success">Send to Selected</button>
+                  </div>
+                  <p id="modelPageSendMessage" class="muted"></p>
+                </div>
+
+              </div>
+            </div><!-- .mp-columns -->
+          </div><!-- #modelPageContent -->
+        </section><!-- #modelPage -->
       </section>
     </main>
   </div>
