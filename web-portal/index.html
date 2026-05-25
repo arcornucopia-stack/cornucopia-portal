@@ -7,19 +7,20 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./styles.css?v=6" />
+  <link rel="stylesheet" href="./styles.css?v=7" />
   <!-- model-viewer for GLB thumbnail generation -->
   <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
 </head>
 <body>
-  <!-- Thumbnail generator: 256x256 but hidden behind a 0x0 clip container so
-       the browser still initialises WebGL (display:none / opacity:0 skips it) -->
-  <div style="position:fixed;left:0;bottom:0;width:0;height:0;overflow:hidden;pointer-events:none;z-index:-1">
-    <model-viewer id="thumbnailGenerator"
-      style="width:256px;height:256px"
-      camera-controls
-      shadow-intensity="0"></model-viewer>
-  </div>
+  <!-- Thumbnail generator: real 256x256 dimensions so WebGL allocates a framebuffer,
+       positioned 300px off the left edge so it's never visible to the user.
+       loading="eager" bypasses model-viewer's IntersectionObserver so it loads
+       even though the element is outside the viewport. -->
+  <model-viewer id="thumbnailGenerator"
+    style="position:fixed;left:-300px;top:0;width:256px;height:256px;pointer-events:none"
+    camera-controls
+    shadow-intensity="0"
+    loading="eager"></model-viewer>
   <div class="shell auth-mode">
     <aside class="sidebar">
       <div class="brand">Cornucopia</div>
@@ -436,7 +437,7 @@
   <!-- Toast notification -->
   <div id="toastNotification" class="toast hidden"></div>
 
-  <script src="./firebase-config.js?v=6"></script>
-  <script type="module" src="./app.js?v=6"></script>
+  <script src="./firebase-config.js?v=7"></script>
+  <script type="module" src="./app.js?v=7"></script>
 </body>
 </html>
