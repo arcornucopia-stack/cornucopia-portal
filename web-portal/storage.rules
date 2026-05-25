@@ -9,7 +9,7 @@ service firebase.storage {
       allow read: if signedIn();
       allow write: if signedIn()
         && request.resource.size < 100 * 1024 * 1024
-        && fileName.matches('.*\\.glb$');
+        && (fileName.matches('.*\\.glb$') || fileName == 'thumbnail.png');
     }
 
     match /{allPaths=**} {
