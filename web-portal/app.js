@@ -36,7 +36,7 @@ const storage = getStorage(app);
 
 // ── Version stamp – if you don't see this line in the Console after page load,
 //    the browser is still serving old cached code. Hard-reload with Ctrl+Shift+R.
-console.log("%c[Cornucopia] app.js v5 loaded ✓", "color:green;font-weight:bold;font-size:14px");
+console.log("%c[Cornucopia] app.js v6 loaded ✓", "color:green;font-weight:bold;font-size:14px");
 
 const authScreen = byId("authScreen");
 const appScreen = byId("appScreen");
@@ -687,73 +687,82 @@ async function refreshAll() {
  * capture a PNG via toBlob(), upload to Firebase Storage, and save the URL.
  * This runs fire-and-forget — failures are logged but never shown to the user.
  */
-async function generateAndUploadThumbnail(submissionId, businessId, glbStoragePath) {
+/**
+ * glbFile — the original File object (already in memory).
+ * Using URL.createObjectURL avoids Firebase Storage CORS entirely.
+ */
+async function generateAndUploadThumbnail(submissionId, businessId, glbFile) {
+  console.log("[Cornucopia] 🖼 Thumbnail generation starting for", submissionId);
+  const objectUrl = URL.createObjectURL(glbFile);
   try {
+    // ① model-viewer element
     const mv = byId("thumbnailGenerator");
-    if (!mv) return;
+    if (!mv) { console.warn("[Cornucopia] #thumbnailGenerator element not found"); return; }
+    console.log("[Cornucopia] 🖼 Step 1: waiting for model-viewer custom element...");
 
-    // Wait for the custom element to register (it loads as an ES module)
-    await customElements.whenDefined("model-viewer").catch(() => null);
+    // Wait up to 10 s for the CDN module to register the custom element
+    await Promise.race([
+      customElements.whenDefined("model-viewer"),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("model-viewer CE timeout")), 10000))
+    ]);
+    console.log("[Cornucopia] 🖼 Step 2: custom element ready, toBlob =", typeof mv.toBlob);
+
     if (typeof mv.toBlob !== "function") {
-      console.warn("[Cornucopia] model-viewer.toBlob not available — skipping thumbnail");
+      console.warn("[Cornucopia] toBlob not a function — model-viewer version may not support it");
       return;
     }
 
-    // Get the public download URL for the uploaded GLB
-    const glbUrl = await getDownloadURL(ref(storage, glbStoragePath));
-
-    // Load the GLB into the off-screen viewer and wait for it to render
+    // ② Load GLB via local blob URL (no CORS, no auth token needed)
+    console.log("[Cornucopia] 🖼 Step 3: loading GLB into model-viewer...");
     await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         mv.removeEventListener("load", onLoad);
         mv.removeEventListener("error", onError);
-        reject(new Error("model-viewer load timeout"));
+        reject(new Error("model-viewer GLB load timeout (30 s)"));
       }, 30000);
-      const onLoad = () => { clearTimeout(timeout); mv.removeEventListener("load", onLoad); mv.removeEventListener("error", onError); resolve(); };
-      const onError = (e) => { clearTimeout(timeout); mv.removeEventListener("load", onLoad); mv.removeEventListener("error", onError); reject(e); };
-      mv.addEventListener("load", onLoad);
+      const onLoad  = () => { clearTimeout(timeout); mv.removeEventListener("load", onLoad); mv.removeEventListener("error", onError); resolve(); };
+      const onError = (e) => { clearTimeout(timeout); mv.removeEventListener("load", onLoad); mv.removeEventListener("error", onError); reject(new Error("model-viewer error: " + (e?.detail?.type || e))); };
+      mv.addEventListener("load",  onLoad);
       mv.addEventListener("error", onError);
-      mv.src = glbUrl;
+      mv.src = objectUrl;
     });
+    console.log("[Cornucopia] 🖼 Step 4: GLB loaded, waiting 1.2 s for renderer to settle...");
 
-    // Wait for the WebGL renderer to fully settle (textures, lighting)
+    // ③ Let the WebGL renderer finish (textures, lighting)
     await new Promise((r) => setTimeout(r, 1200));
 
-    // Capture PNG
+    // ④ Capture PNG
+    console.log("[Cornucopia] 🖼 Step 5: calling toBlob()...");
     const blob = await mv.toBlob({ idealAspect: true });
-    mv.src = ""; // free the loaded model
+    mv.src = ""; // free GPU memory
     if (!blob) throw new Error("toBlob() returned null");
+    console.log("[Cornucopia] 🖼 Step 6: PNG blob size =", blob.size, "bytes");
 
-    // Upload PNG to Firebase Storage
+    // ⑤ Upload PNG to Firebase Storage
+    console.log("[Cornucopia] 🖼 Step 7: uploading PNG to Firebase Storage...");
     const thumbPath = `partner_uploads/${businessId}/${submissionId}/thumbnail.png`;
     const thumbStorageRef = ref(storage, thumbPath);
     const thumbTask = uploadBytesResumable(thumbStorageRef, blob, { contentType: "image/png" });
     await new Promise((resolve, reject) => thumbTask.on("state_changed", null, reject, resolve));
     const thumbUrl = await getDownloadURL(thumbStorageRef);
-
-    // Persist to Database
-    await update(dbRef(db, `${ROOT}/submissions/${submissionId}`), { thumbnailUrl: thumbUrl });
-
-    // Also update models/{modelKey} if the record exists
-    const subSnap = await get(dbRef(db, `${ROOT}/submissions/${submissionId}`));
-    if (subSnap.exists()) {
-      const sub = subSnap.val();
-      if (sub.modelKey) {
-        await update(dbRef(db, `${ROOT}/models/${sub.modelKey}`), { thumbnailUrl: thumbUrl });
-      }
-    }
-
     console.log("[Cornucopia] ✓ Thumbnail saved:", thumbUrl);
 
-    // Live-update the submission cache so the table row shows the thumbnail
+    // ⑥ Persist URL to Database
+    await update(dbRef(db, `${ROOT}/submissions/${submissionId}`), { thumbnailUrl: thumbUrl });
+    const subSnap = await get(dbRef(db, `${ROOT}/submissions/${submissionId}`));
+    if (subSnap.exists() && subSnap.val().modelKey) {
+      await update(dbRef(db, `${ROOT}/models/${subSnap.val().modelKey}`), { thumbnailUrl: thumbUrl });
+    }
+
+    // ⑦ Live-update UI without a full page reload
     const cached = submissionsCache.find((x) => x.id === submissionId);
     if (cached) { cached.thumbnailUrl = thumbUrl; renderSubmissionRows(); }
-
-    // Live-update the model page preview if it's open for this submission
     if (currentDetailSubmissionId === submissionId) renderModelPageThumbnail(thumbUrl);
 
   } catch (err) {
-    console.warn("[Cornucopia] Thumbnail generation failed (non-fatal):", err.message || err);
+    console.error("[Cornucopia] ✗ Thumbnail generation failed:", err.message || err);
+  } finally {
+    URL.revokeObjectURL(objectUrl);
   }
 }
 
@@ -880,8 +889,8 @@ async function uploadModel() {
         // Transition to step 2 immediately — before any data refresh so the
         // animation fires right away and nothing can close the modal first.
         transitionUploadToQuestions(submissionId);
-        // Generate PNG thumbnail in the background (fire-and-forget)
-        generateAndUploadThumbnail(submissionId, businessId, storagePath);
+        // Generate PNG thumbnail from the local File (no CORS, fire-and-forget)
+        generateAndUploadThumbnail(submissionId, businessId, file);
         // Refresh data in the background (no await — runs while step 2 is shown)
         refreshAll();
         // Notify admins of new upload (partners only)
