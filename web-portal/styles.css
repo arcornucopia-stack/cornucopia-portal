@@ -1059,12 +1059,40 @@ button[disabled] {
   align-items: center;
   justify-content: center;
   min-height: 140px;
+  overflow: hidden;
+  padding: 0;
 }
 .mp-preview-placeholder {
   font-size: 28px;
   font-weight: 800;
   color: #d8e8e2;
   letter-spacing: 0.15em;
+}
+.mp-thumbnail {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 10px;
+  background: #f7fcfa;
+}
+
+/* Thumbnail in the My Uploads table rows */
+.row-thumbnail {
+  width: 52px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid #e0ede8;
+  flex-shrink: 0;
+  display: block;
+}
+.row-thumbnail-placeholder {
+  width: 52px;
+  height: 40px;
+  border-radius: 6px;
+  border: 1px solid #e0ede8;
+  background: #f2f8f5;
+  flex-shrink: 0;
 }
 
 /* "already sent" badge in distribution list */

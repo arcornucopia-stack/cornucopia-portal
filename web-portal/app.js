@@ -17,7 +17,8 @@ import {
 import {
   getStorage,
   ref,
-  uploadBytesResumable
+  uploadBytesResumable,
+  getDownloadURL
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-storage.js";
 
 const ROOT = "cornucopia";
@@ -35,7 +36,7 @@ const storage = getStorage(app);
 
 // ── Version stamp – if you don't see this line in the Console after page load,
 //    the browser is still serving old cached code. Hard-reload with Ctrl+Shift+R.
-console.log("%c[Cornucopia] app.js v4 loaded ✓", "color:green;font-weight:bold;font-size:14px");
+console.log("%c[Cornucopia] app.js v5 loaded ✓", "color:green;font-weight:bold;font-size:14px");
 
 const authScreen = byId("authScreen");
 const appScreen = byId("appScreen");
@@ -679,6 +680,97 @@ async function refreshAll() {
   ]);
 }
 
+// ─── Thumbnail generation ────────────────────────────────────────────────────
+
+/**
+ * After a GLB upload completes, load it in the off-screen <model-viewer>,
+ * capture a PNG via toBlob(), upload to Firebase Storage, and save the URL.
+ * This runs fire-and-forget — failures are logged but never shown to the user.
+ */
+async function generateAndUploadThumbnail(submissionId, businessId, glbStoragePath) {
+  try {
+    const mv = byId("thumbnailGenerator");
+    if (!mv) return;
+
+    // Wait for the custom element to register (it loads as an ES module)
+    await customElements.whenDefined("model-viewer").catch(() => null);
+    if (typeof mv.toBlob !== "function") {
+      console.warn("[Cornucopia] model-viewer.toBlob not available — skipping thumbnail");
+      return;
+    }
+
+    // Get the public download URL for the uploaded GLB
+    const glbUrl = await getDownloadURL(ref(storage, glbStoragePath));
+
+    // Load the GLB into the off-screen viewer and wait for it to render
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        mv.removeEventListener("load", onLoad);
+        mv.removeEventListener("error", onError);
+        reject(new Error("model-viewer load timeout"));
+      }, 30000);
+      const onLoad = () => { clearTimeout(timeout); mv.removeEventListener("load", onLoad); mv.removeEventListener("error", onError); resolve(); };
+      const onError = (e) => { clearTimeout(timeout); mv.removeEventListener("load", onLoad); mv.removeEventListener("error", onError); reject(e); };
+      mv.addEventListener("load", onLoad);
+      mv.addEventListener("error", onError);
+      mv.src = glbUrl;
+    });
+
+    // Extra frame for the WebGL renderer to settle
+    await new Promise((r) => setTimeout(r, 600));
+
+    // Capture PNG
+    const blob = await mv.toBlob({ idealAspect: true });
+    mv.src = ""; // free the loaded model
+    if (!blob) throw new Error("toBlob() returned null");
+
+    // Upload PNG to Firebase Storage
+    const thumbPath = `partner_uploads/${businessId}/${submissionId}/thumbnail.png`;
+    const thumbStorageRef = ref(storage, thumbPath);
+    const thumbTask = uploadBytesResumable(thumbStorageRef, blob, { contentType: "image/png" });
+    await new Promise((resolve, reject) => thumbTask.on("state_changed", null, reject, resolve));
+    const thumbUrl = await getDownloadURL(thumbStorageRef);
+
+    // Persist to Database
+    await update(dbRef(db, `${ROOT}/submissions/${submissionId}`), { thumbnailUrl: thumbUrl });
+
+    // Also update models/{modelKey} if the record exists
+    const subSnap = await get(dbRef(db, `${ROOT}/submissions/${submissionId}`));
+    if (subSnap.exists()) {
+      const sub = subSnap.val();
+      if (sub.modelKey) {
+        await update(dbRef(db, `${ROOT}/models/${sub.modelKey}`), { thumbnailUrl: thumbUrl });
+      }
+    }
+
+    console.log("[Cornucopia] ✓ Thumbnail saved:", thumbUrl);
+
+    // Live-update the submission cache so the table row shows the thumbnail
+    const cached = submissionsCache.find((x) => x.id === submissionId);
+    if (cached) { cached.thumbnailUrl = thumbUrl; renderSubmissionRows(); }
+
+    // Live-update the model page preview if it's open for this submission
+    if (currentDetailSubmissionId === submissionId) renderModelPageThumbnail(thumbUrl);
+
+  } catch (err) {
+    console.warn("[Cornucopia] Thumbnail generation failed (non-fatal):", err.message || err);
+  }
+}
+
+/** Show thumbnail image in the model page preview card, or fall back to placeholder. */
+function renderModelPageThumbnail(url) {
+  const img = byId("modelPageThumbnail");
+  const placeholder = byId("modelPagePreviewPlaceholder");
+  if (url && img) {
+    img.src = url;
+    img.classList.remove("hidden");
+    if (placeholder) placeholder.style.display = "none";
+  } else {
+    if (img) img.classList.add("hidden");
+    if (placeholder) placeholder.style.display = "";
+  }
+}
+
 async function uploadModel() {
   if (!currentUser || !currentProfile) return;
 
@@ -788,6 +880,8 @@ async function uploadModel() {
         // Transition to step 2 immediately — before any data refresh so the
         // animation fires right away and nothing can close the modal first.
         transitionUploadToQuestions(submissionId);
+        // Generate PNG thumbnail in the background (fire-and-forget)
+        generateAndUploadThumbnail(submissionId, businessId, storagePath);
         // Refresh data in the background (no await — runs while step 2 is shown)
         refreshAll();
         // Notify admins of new upload (partners only)
@@ -1790,15 +1884,22 @@ function renderSubmissionRows() {
     const qLabel = qCount > 0 ? `${qCount} question${qCount !== 1 ? "s" : ""}` : "0 questions";
     const displayName = item.displayName || item.fileName || "-";
 
+    const thumbHtml = item.thumbnailUrl
+      ? `<img src="${escapeHtml(item.thumbnailUrl)}" class="row-thumbnail" alt="thumbnail">`
+      : `<div class="row-thumbnail-placeholder"></div>`;
+
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>
-        <div style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap">
-          <button class="model-name-link" data-analytics="true">
-            <strong>${escapeHtml(displayName)}</strong><br>
-            <span class="muted" style="font-size:12px">${escapeHtml(item.fileName || "")}</span>
-          </button>
-          <button class="model-details-btn" type="button" title="Edit model details">Details</button>
+        <div style="display:flex;align-items:center;gap:10px">
+          ${thumbHtml}
+          <div style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;flex:1">
+            <button class="model-name-link" data-analytics="true">
+              <strong>${escapeHtml(displayName)}</strong><br>
+              <span class="muted" style="font-size:12px">${escapeHtml(item.fileName || "")}</span>
+            </button>
+            <button class="model-details-btn" type="button" title="Edit model details">Details</button>
+          </div>
         </div>
       </td>
       ${isAdmin ? `<td>${escapeHtml(item.businessName || item.businessId || "-")}</td>` : ""}
@@ -1882,6 +1983,9 @@ async function openModelPage(item) {
 
     await renderModelPageQuestions(item, yes, no, opens, sent);
     await renderModelPageDistribution(item);
+
+    // Show thumbnail or placeholder
+    renderModelPageThumbnail(item.thumbnailUrl || null);
 
     byId("modelPageLoading")?.classList.add("hidden");
     byId("modelPageContent")?.classList.remove("hidden");

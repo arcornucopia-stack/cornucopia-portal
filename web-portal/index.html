@@ -7,9 +7,16 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./styles.css?v=4" />
+  <link rel="stylesheet" href="./styles.css?v=5" />
+  <!-- model-viewer for GLB thumbnail generation -->
+  <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
 </head>
 <body>
+  <!-- Off-screen model-viewer used only to generate PNG thumbnails after upload -->
+  <model-viewer id="thumbnailGenerator"
+    style="position:fixed;left:-9999px;top:-9999px;width:256px;height:256px;opacity:0;pointer-events:none"
+    camera-controls
+    shadow-intensity="0"></model-viewer>
   <div class="shell auth-mode">
     <aside class="sidebar">
       <div class="brand">Cornucopia</div>
@@ -176,7 +183,8 @@
               <div class="mp-col-right">
 
                 <div class="mp-card mp-preview-card">
-                  <div class="mp-preview-placeholder">MODEL</div>
+                  <img id="modelPageThumbnail" class="mp-thumbnail hidden" alt="Model preview" />
+                  <div class="mp-preview-placeholder" id="modelPagePreviewPlaceholder">MODEL</div>
                 </div>
 
                 <div class="mp-card">
@@ -425,7 +433,7 @@
   <!-- Toast notification -->
   <div id="toastNotification" class="toast hidden"></div>
 
-  <script src="./firebase-config.js?v=4"></script>
-  <script type="module" src="./app.js?v=4"></script>
+  <script src="./firebase-config.js?v=5"></script>
+  <script type="module" src="./app.js?v=5"></script>
 </body>
 </html>
