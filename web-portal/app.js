@@ -716,8 +716,8 @@ async function generateAndUploadThumbnail(submissionId, businessId, glbStoragePa
       mv.src = glbUrl;
     });
 
-    // Extra frame for the WebGL renderer to settle
-    await new Promise((r) => setTimeout(r, 600));
+    // Wait for the WebGL renderer to fully settle (textures, lighting)
+    await new Promise((r) => setTimeout(r, 1200));
 
     // Capture PNG
     const blob = await mv.toBlob({ idealAspect: true });

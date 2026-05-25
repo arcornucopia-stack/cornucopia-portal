@@ -12,11 +12,14 @@
   <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
 </head>
 <body>
-  <!-- Off-screen model-viewer used only to generate PNG thumbnails after upload -->
-  <model-viewer id="thumbnailGenerator"
-    style="position:fixed;left:-9999px;top:-9999px;width:256px;height:256px;opacity:0;pointer-events:none"
-    camera-controls
-    shadow-intensity="0"></model-viewer>
+  <!-- Thumbnail generator: 256x256 but hidden behind a 0x0 clip container so
+       the browser still initialises WebGL (display:none / opacity:0 skips it) -->
+  <div style="position:fixed;left:0;bottom:0;width:0;height:0;overflow:hidden;pointer-events:none;z-index:-1">
+    <model-viewer id="thumbnailGenerator"
+      style="width:256px;height:256px"
+      camera-controls
+      shadow-intensity="0"></model-viewer>
+  </div>
   <div class="shell auth-mode">
     <aside class="sidebar">
       <div class="brand">Cornucopia</div>
