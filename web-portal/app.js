@@ -36,7 +36,7 @@ const storage = getStorage(app);
 
 // ── Version stamp – if you don't see this line in the Console after page load,
 //    the browser is still serving old cached code. Hard-reload with Ctrl+Shift+R.
-console.log("%c[Cornucopia] app.js v7 loaded ✓", "color:green;font-weight:bold;font-size:14px");
+console.log("%c[Cornucopia] app.js v8 loaded ✓", "color:green;font-weight:bold;font-size:14px");
 
 const authScreen = byId("authScreen");
 const appScreen = byId("appScreen");
@@ -747,17 +747,27 @@ async function generateAndUploadThumbnail(submissionId, businessId, glbFile) {
     const thumbUrl = await getDownloadURL(thumbStorageRef);
     console.log("[Cornucopia] ✓ Thumbnail saved:", thumbUrl);
 
-    // ⑥ Persist URL to Database
+    // ⑥ Save to submissions (portal reads from here — always allowed)
     await update(dbRef(db, `${ROOT}/submissions/${submissionId}`), { thumbnailUrl: thumbUrl });
-    const subSnap = await get(dbRef(db, `${ROOT}/submissions/${submissionId}`));
-    if (subSnap.exists() && subSnap.val().modelKey) {
-      await update(dbRef(db, `${ROOT}/models/${subSnap.val().modelKey}`), { thumbnailUrl: thumbUrl });
-    }
 
-    // ⑦ Live-update UI without a full page reload
+    // ⑦ Live-update UI — do this before the optional models write so it
+    //    always runs even if the DB rule below denies the secondary update
     const cached = submissionsCache.find((x) => x.id === submissionId);
     if (cached) { cached.thumbnailUrl = thumbUrl; renderSubmissionRows(); }
     if (currentDetailSubmissionId === submissionId) renderModelPageThumbnail(thumbUrl);
+
+    // ⑧ Best-effort: mirror thumbnailUrl to models/{modelKey} for the Unity app.
+    //    Wrapped in its own try-catch — partners may not have write access to
+    //    models/ and that's fine; the portal uses submissions/ anyway.
+    try {
+      const subSnap = await get(dbRef(db, `${ROOT}/submissions/${submissionId}`));
+      if (subSnap.exists() && subSnap.val().modelKey) {
+        await update(dbRef(db, `${ROOT}/models/${subSnap.val().modelKey}`), { thumbnailUrl: thumbUrl });
+        console.log("[Cornucopia] ✓ thumbnailUrl mirrored to models record");
+      }
+    } catch (mirrorErr) {
+      console.warn("[Cornucopia] Could not mirror thumbnailUrl to models/ (non-fatal):", mirrorErr.message);
+    }
 
   } catch (err) {
     console.error("[Cornucopia] ✗ Thumbnail generation failed:", err.message || err);
