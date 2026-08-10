@@ -5,6 +5,14 @@ service firebase.storage {
       return request.auth != null;
     }
 
+    // Catalog assets read by the mobile apps (MVP + V2)
+    match /model/{fileName} {
+      allow read: if signedIn();
+    }
+    match /pics/{fileName} {
+      allow read: if signedIn();
+    }
+
     match /partner_uploads/{businessId}/{submissionId}/{fileName} {
       allow read: if signedIn();
       allow write: if signedIn()

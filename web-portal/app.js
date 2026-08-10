@@ -748,7 +748,11 @@ async function generateAndUploadThumbnail(submissionId, businessId, glbFile) {
     console.log("[Cornucopia] ✓ Thumbnail saved:", thumbUrl);
 
     // ⑥ Save to submissions (portal reads from here — always allowed)
-    await update(dbRef(db, `${ROOT}/submissions/${submissionId}`), { thumbnailUrl: thumbUrl });
+    await update(dbRef(db, `${ROOT}/submissions/${submissionId}`), {
+      thumbnailUrl: thumbUrl,
+      thumbnailError: null,
+      thumbnailErrorAt: null
+    });
 
     // ⑦ Live-update UI — do this before the optional models write so it
     //    always runs even if the DB rule below denies the secondary update
@@ -762,15 +766,32 @@ async function generateAndUploadThumbnail(submissionId, businessId, glbFile) {
     try {
       const subSnap = await get(dbRef(db, `${ROOT}/submissions/${submissionId}`));
       if (subSnap.exists() && subSnap.val().modelKey) {
-        await update(dbRef(db, `${ROOT}/models/${subSnap.val().modelKey}`), { thumbnailUrl: thumbUrl });
-        console.log("[Cornucopia] ✓ thumbnailUrl mirrored to models record");
+        // Only update an existing record — update() on a missing path would
+        // create a thumbnail-only stub that the apps render as a ghost product.
+        const modelRef = dbRef(db, `${ROOT}/models/${subSnap.val().modelKey}`);
+        const modelSnap = await get(modelRef);
+        if (modelSnap.exists()) {
+          await update(modelRef, { thumbnailUrl: thumbUrl });
+          console.log("[Cornucopia] ✓ thumbnailUrl mirrored to models record");
+        }
       }
     } catch (mirrorErr) {
       console.warn("[Cornucopia] Could not mirror thumbnailUrl to models/ (non-fatal):", mirrorErr.message);
     }
 
   } catch (err) {
-    console.error("[Cornucopia] ✗ Thumbnail generation failed:", err.message || err);
+    // Thumbnail generation is best-effort, but a silent console-only failure
+    // let broken thumbnails go unnoticed for months. Surface it and record the
+    // reason on the submission so it can be diagnosed after the fact.
+    const reason = err?.message || String(err);
+    console.error("[Cornucopia] ✗ Thumbnail generation failed:", reason);
+    showToast(`Thumbnail could not be generated: ${reason}`, "error");
+    try {
+      await update(dbRef(db, `${ROOT}/submissions/${submissionId}`), {
+        thumbnailError: reason,
+        thumbnailErrorAt: Date.now()
+      });
+    } catch (_) { /* diagnostics only — never mask the original failure */ }
   } finally {
     URL.revokeObjectURL(objectUrl);
   }
@@ -1061,9 +1082,8 @@ async function updateSubmissionStatus(id, status) {
     rejectedAt: status === "rejected" ? Date.now() : null
   });
 
-  if (status === "approved") {
-    await ensureModelRecordFromSubmission(id);
-  }
+  // Note: approval no longer writes to ${ROOT}/models — the mobile apps read
+  // that node, so a model must only appear there when it is pushed to the app.
 
   const submissionSnap = await get(dbRef(db, `${ROOT}/submissions/${id}`));
   if (submissionSnap.exists()) {
@@ -1079,17 +1099,8 @@ async function updateSubmissionStatus(id, status) {
   }
 }
 
-async function ensureModelRecordFromSubmission(submissionId) {
-  const submissionSnap = await get(dbRef(db, `${ROOT}/submissions/${submissionId}`));
-  if (!submissionSnap.exists()) return;
-
-  const item = submissionSnap.val();
-  const modelKey = item.modelKey || sanitizeKey(stripGlbExtension(item.fileName || `model_${submissionId}`));
-  const modelRef = dbRef(db, `${ROOT}/models/${modelKey}`);
-  const modelSnap = await get(modelRef);
-  if (modelSnap.exists()) return;
-
-  // Read the first question assigned to this submission
+/** First question assigned to a submission, falling back to the default prompt. */
+async function resolveSubmissionQuestion(submissionId, item) {
   let questionText = item.question || "";
   if (!questionText) {
     const questionsSnap = await get(dbRef(db, `${ROOT}/submissions/${submissionId}/questions`));
@@ -1099,18 +1110,7 @@ async function ensureModelRecordFromSubmission(submissionId) {
       if (first) questionText = first.text;
     }
   }
-  if (!questionText) questionText = "Would you like this product?";
-
-  await set(modelRef, {
-    name: item.displayName || stripGlbExtension(item.fileName || modelKey),
-    modelNamee: modelKey,
-    picPathh: item.picPathh || modelKey,
-    question: questionText,
-    storagePath: item.storagePath || "",
-    data: { sent: 0, saved: 0, yes: 0, no: 0, rating: "0.0" }
-  });
-
-  await update(dbRef(db, `${ROOT}/submissions/${submissionId}`), { modelKey });
+  return questionText || "Would you like this product?";
 }
 
 async function pushSubmissionToApp(submissionId, options = {}) {
@@ -1138,8 +1138,10 @@ async function pushSubmissionToApp(submissionId, options = {}) {
     name: item.displayName || stripGlbExtension(item.fileName || modelKey),
     modelNamee: modelKey,
     picPathh: item.picPathh || existingModel.picPathh || modelKey,
-    question: item.question || existingModel.question || "Would you like this product?",
-    storagePath: item.storagePath,
+    question: await resolveSubmissionQuestion(submissionId, item),
+    storagePath: item.storagePath || "",
+    // Newest-first ordering in the apps; keep the original date on re-push
+    createdAt: existingModel.createdAt || Date.now(),
     data: {
       sent: toInt(existingModel?.data?.sent, 0),
       saved: toInt(existingModel?.data?.saved, 0),
@@ -1148,6 +1150,8 @@ async function pushSubmissionToApp(submissionId, options = {}) {
       rating: String(existingModel?.data?.rating ?? "0.0")
     }
   };
+  const pushThumbUrl = item.thumbnailUrl || existingModel.thumbnailUrl;
+  if (pushThumbUrl) mergedModel.thumbnailUrl = pushThumbUrl;
 
   await set(modelRef, mergedModel);
 
@@ -1545,6 +1549,13 @@ async function sendApprovedPartnerModelToUsers() {
 
   let assigned = 0;
   try {
+    // The model must already be in the app catalog (i.e. pushed by an admin)
+    const modelSnap = await get(dbRef(db, `${ROOT}/models/${modelKey}`));
+    if (!modelSnap.exists()) {
+      partnerDeliveryMessage.textContent = "This model hasn't been pushed to the app yet — ask an admin to push it first.";
+      return;
+    }
+
     for (const uid of selected) {
       const userModelRef = dbRef(db, `${ROOT}/users/${uid}/models/${modelKey}`);
       const existing = await get(userModelRef);
