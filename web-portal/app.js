@@ -1996,6 +1996,8 @@ async function openModelPage(item) {
   const metaEl  = byId("modelPageMeta");
   if (titleEl) titleEl.textContent = title;
   if (metaEl)  metaEl.textContent  = `Status: ${statusLabel(item)} · Uploaded ${formatTs(item.createdAt)}`;
+  const descEl = byId("modelPageDescription");
+  if (descEl) descEl.textContent = item.description || "No description provided.";
 
   byId("modelPageLoading")?.classList.remove("hidden");
   byId("modelPageContent")?.classList.add("hidden");

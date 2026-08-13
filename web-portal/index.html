@@ -173,11 +173,16 @@
             <!-- Two-column layout -->
             <div class="mp-columns">
 
-              <!-- Left: question responses + add question -->
+              <!-- Left: description + question responses -->
               <div class="mp-col-left">
 
                 <div class="mp-card">
-                  <h3 class="mp-section-title">Question Responses</h3>
+                  <h3 class="mp-section-title">Description</h3>
+                  <p id="modelPageDescription" class="muted"></p>
+                </div>
+
+                <div class="mp-card">
+                  <h3 class="mp-section-title">Question(s) &amp; Responses</h3>
                   <div id="modelPageQuestionsList"></div>
                 </div>
 
@@ -439,6 +444,6 @@
   <div id="toastNotification" class="toast hidden"></div>
 
   <script src="./firebase-config.js?v=8"></script>
-  <script type="module" src="./app.js?v=14"></script>
+  <script type="module" src="./app.js?v=15"></script>
 </body>
 </html>
