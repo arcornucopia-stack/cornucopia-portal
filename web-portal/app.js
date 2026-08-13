@@ -1140,6 +1140,7 @@ async function pushSubmissionToApp(submissionId, options = {}) {
     picPathh: item.picPathh || existingModel.picPathh || modelKey,
     question: await resolveSubmissionQuestion(submissionId, item),
     storagePath: item.storagePath || "",
+    businessName: item.businessName || existingModel.businessName || "",
     // Newest-first ordering in the apps; keep the original date on re-push
     createdAt: existingModel.createdAt || Date.now(),
     data: {
