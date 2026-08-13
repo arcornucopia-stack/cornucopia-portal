@@ -713,13 +713,18 @@ async function generateAndUploadThumbnail(submissionId, businessId, glbFile) {
     }
 
     // ② Load GLB via local blob URL (no CORS, no auth token needed)
-    console.log("[Cornucopia] 🖼 Step 3: loading GLB into model-viewer...");
+    // Scale the timeout with file size - a flat 30s was tuned for small test
+    // files and timed out on a real 34MB upload. 30s floor, ~2s/MB, 120s cap
+    // so a genuinely broken file still fails in reasonable time.
+    const fileSizeMB = glbFile.size / (1024 * 1024);
+    const loadTimeoutMs = Math.round(Math.max(30000, Math.min(120000, 15000 + fileSizeMB * 2000)));
+    console.log(`[Cornucopia] 🖼 Step 3: loading GLB into model-viewer... (${fileSizeMB.toFixed(1)} MB, timeout ${loadTimeoutMs}ms)`);
     await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         mv.removeEventListener("load", onLoad);
         mv.removeEventListener("error", onError);
-        reject(new Error("model-viewer GLB load timeout (30 s)"));
-      }, 30000);
+        reject(new Error(`model-viewer GLB load timeout (${Math.round(loadTimeoutMs / 1000)}s, file was ${fileSizeMB.toFixed(1)} MB)`));
+      }, loadTimeoutMs);
       const onLoad  = () => { clearTimeout(timeout); mv.removeEventListener("load", onLoad); mv.removeEventListener("error", onError); resolve(); };
       const onError = (e) => { clearTimeout(timeout); mv.removeEventListener("load", onLoad); mv.removeEventListener("error", onError); reject(new Error("model-viewer error: " + (e?.detail?.type || e))); };
       mv.addEventListener("load",  onLoad);
