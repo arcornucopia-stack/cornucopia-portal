@@ -1087,12 +1087,22 @@ async function updateSubmissionStatus(id, status) {
     rejectedAt: status === "rejected" ? Date.now() : null
   });
 
-  // Note: approval no longer writes to ${ROOT}/models — the mobile apps read
-  // that node, so a model must only appear there when it is pushed to the app.
+  // Approval publishes the catalog record (see ensurePublishedModel) so the
+  // partner can target-send it immediately. It does NOT assign it to any
+  // user — that's still Push to App's job (broad) or the partner's own send
+  // (targeted). Only admins can approve, and only admins may write
+  // cornucopia/models per the RTDB rules, so this has to happen here rather
+  // than in the partner-facing send actions themselves.
+  if (status === "approved") {
+    const submissionSnap = await get(dbRef(db, `${ROOT}/submissions/${id}`));
+    if (submissionSnap.exists()) {
+      await ensurePublishedModel(id, { id, ...submissionSnap.val() });
+    }
+  }
 
-  const submissionSnap = await get(dbRef(db, `${ROOT}/submissions/${id}`));
-  if (submissionSnap.exists()) {
-    const s = submissionSnap.val();
+  const submissionSnap2 = await get(dbRef(db, `${ROOT}/submissions/${id}`));
+  if (submissionSnap2.exists()) {
+    const s = submissionSnap2.val();
     if (s?.modelKey) {
       await upsertModelUploadTracker({
         modelKey: s.modelKey,
@@ -1118,21 +1128,11 @@ async function resolveSubmissionQuestion(submissionId, item) {
   return questionText || "Would you like this product?";
 }
 
-async function pushSubmissionToApp(submissionId, options = {}) {
-  const submissionRef = dbRef(db, `${ROOT}/submissions/${submissionId}`);
-  const submissionSnap = await get(submissionRef);
-  if (!submissionSnap.exists()) return;
-
-  const item = { id: submissionId, ...submissionSnap.val() };
-  if (item.status === "rejected") {
-    alert("Rejected submissions cannot be pushed.");
-    return;
-  }
-
-  if (item.status !== "approved") {
-    await updateSubmissionStatus(submissionId, "approved");
-  }
-
+/** Creates or refreshes cornucopia/models/{modelKey} from a submission - the
+ * one place that builds a real, complete catalog record (never a stub).
+ * Used by approval (so partners can target-send right away) and by Push to
+ * App (broad distribution). Returns the modelKey. */
+async function ensurePublishedModel(submissionId, item) {
   const modelKey = item.modelKey || sanitizeKey(stripGlbExtension(item.fileName || `model_${submissionId}`));
   const modelRef = dbRef(db, `${ROOT}/models/${modelKey}`);
   const modelSnap = await get(modelRef);
@@ -1156,10 +1156,32 @@ async function pushSubmissionToApp(submissionId, options = {}) {
       rating: String(existingModel?.data?.rating ?? "0.0")
     }
   };
-  const pushThumbUrl = item.thumbnailUrl || existingModel.thumbnailUrl;
-  if (pushThumbUrl) mergedModel.thumbnailUrl = pushThumbUrl;
+  const thumbUrl = item.thumbnailUrl || existingModel.thumbnailUrl;
+  if (thumbUrl) mergedModel.thumbnailUrl = thumbUrl;
 
   await set(modelRef, mergedModel);
+  if (!item.modelKey) {
+    await update(dbRef(db, `${ROOT}/submissions/${submissionId}`), { modelKey });
+  }
+  return modelKey;
+}
+
+async function pushSubmissionToApp(submissionId, options = {}) {
+  const submissionRef = dbRef(db, `${ROOT}/submissions/${submissionId}`);
+  const submissionSnap = await get(submissionRef);
+  if (!submissionSnap.exists()) return;
+
+  const item = { id: submissionId, ...submissionSnap.val() };
+  if (item.status === "rejected") {
+    alert("Rejected submissions cannot be pushed.");
+    return;
+  }
+
+  if (item.status !== "approved") {
+    await updateSubmissionStatus(submissionId, "approved");
+  }
+
+  const modelKey = await ensurePublishedModel(submissionId, item);
 
   let assigned = 0;
   let assignmentError = null;
