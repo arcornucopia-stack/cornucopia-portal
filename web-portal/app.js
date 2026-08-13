@@ -1144,6 +1144,10 @@ async function ensurePublishedModel(submissionId, item) {
     modelNamee: modelKey,
     picPathh: item.picPathh || existingModel.picPathh || modelKey,
     question: await resolveSubmissionQuestion(submissionId, item),
+    // Lets the apps fetch the submission's full typed question set
+    // (yes/no, multiple_choice, rating, open_text) instead of just the
+    // flattened text string above.
+    submissionId,
     storagePath: item.storagePath || "",
     businessName: item.businessName || existingModel.businessName || "",
     // Newest-first ordering in the apps; keep the original date on re-push
