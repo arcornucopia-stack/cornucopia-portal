@@ -313,7 +313,7 @@ async function sendPortalNotification(toUid, message, type = "info", screen = "u
   await set(ref, { message, type, screen, createdAt: Date.now(), read: false });
 }
 
-async function notifyAllAdmins(message, type = "info", screen = "approvals") {
+async function notifyAllAdmins(message, type = "info", screen = "uploads") {
   try {
     const usersSnap = await get(dbRef(db, `${ROOT}/users`));
     if (!usersSnap.exists()) return;
