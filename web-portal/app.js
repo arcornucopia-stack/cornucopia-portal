@@ -2009,7 +2009,7 @@ async function openModelPage(item) {
 
   try {
     const modelKey = item.modelKey;
-    let data = { sent: 0, saved: 0, yes: 0, no: 0, rating: "0.0" };
+    let data = { sent: 0, saved: 0, yes: 0, no: 0, opens: 0, rating: "0.0" };
     if (modelKey) {
       const snap = await get(dbRef(db, `${ROOT}/models/${modelKey}/data`));
       if (snap.exists()) data = { ...data, ...snap.val() };
@@ -2019,7 +2019,10 @@ async function openModelPage(item) {
     const saved  = toInt(data.saved, 0);
     const yes    = toInt(data.yes, 0);
     const no     = toInt(data.no, 0);
-    const opens  = yes + no;
+    // A genuine "package opened" counter, independent of yes/no - a model whose
+    // question is multiple_choice/rating/open_text (or has no question at all)
+    // still has an Opens count instead of being stuck at 0 forever.
+    const opens  = toInt(data.opens, 0);
     const rating = parseFloat(data.rating) || 0;
     const responseRate = sent  > 0 ? Math.round((opens / sent)  * 100) : 0;
     const saveRate     = opens > 0 ? Math.round((saved / opens) * 100) : 0;
@@ -2095,7 +2098,7 @@ async function renderModelPageQuestions(item, yes, no, opens, sent) {
           <span class="vote-label no-label">${no} No (${noPct}%)</span>
         </div>
         <p class="muted" style="font-size:12px;margin-top:6px">
-          ${opens} total response${opens !== 1 ? "s" : ""} out of ${sent || "?"} delivered
+          ${yes + no} total response${(yes + no) !== 1 ? "s" : ""} out of ${sent || "?"} delivered
         </p>`;
     } else if (q.type === "rating") {
       analyticsHtml = `<p class="muted" style="font-size:13px;margin-top:6px">Rating tracked globally — see Rating stat above.</p>`;
