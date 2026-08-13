@@ -313,14 +313,14 @@ async function sendPortalNotification(toUid, message, type = "info", screen = "u
   await set(ref, { message, type, screen, createdAt: Date.now(), read: false });
 }
 
-async function notifyAllAdmins(message, type = "info") {
+async function notifyAllAdmins(message, type = "info", screen = "approvals") {
   try {
     const usersSnap = await get(dbRef(db, `${ROOT}/users`));
     if (!usersSnap.exists()) return;
     const promises = [];
     usersSnap.forEach(child => {
       const role = String(child.val()?.role || "").toLowerCase();
-      if (role === "admin") promises.push(sendPortalNotification(child.key, message, type));
+      if (role === "admin") promises.push(sendPortalNotification(child.key, message, type, screen));
     });
     await Promise.all(promises);
   } catch (err) { console.warn("Could not notify admins:", err); }
@@ -2122,6 +2122,18 @@ async function renderModelPageDistribution(item) {
 
   if (!modelKey) {
     listEl.innerHTML = `<p class="muted">Model has not been published to the app yet.</p>`;
+    if (actionsEl) actionsEl.style.display = "none";
+    return;
+  }
+
+  // modelKey is set on every submission at upload time, long before it's ever
+  // pushed - so it being present here doesn't mean cornucopia/models/{modelKey}
+  // exists yet. Sending without this check silently creates a name-less,
+  // storagePath-less stub via the sent-count update() below, which the apps
+  // then render as a broken "3D model unavailable" entry.
+  const catalogSnap = await get(dbRef(db, `${ROOT}/models/${modelKey}`));
+  if (!catalogSnap.exists()) {
+    listEl.innerHTML = `<p class="muted">This model hasn't been pushed to the app yet — push it from Manage Uploads first.</p>`;
     if (actionsEl) actionsEl.style.display = "none";
     return;
   }
