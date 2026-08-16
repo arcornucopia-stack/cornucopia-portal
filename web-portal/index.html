@@ -184,6 +184,29 @@
                 <div class="mp-card">
                   <h3 class="mp-section-title">Question(s) &amp; Responses</h3>
                   <div id="modelPageQuestionsList"></div>
+
+                  <div class="add-question-form">
+                    <h4 style="margin:0 0 10px">Add a question</h4>
+                    <label class="field-label">Question type</label>
+                    <select id="modelPageQuestionTypeSelect">
+                      <option value="yes_no">Yes / No</option>
+                      <option value="multiple_choice">Multiple Choice</option>
+                      <option value="rating">Rating (1 – 5)</option>
+                      <option value="open_text">Open Text</option>
+                    </select>
+                    <label class="field-label">Question text</label>
+                    <input id="modelPageQuestionTextInput" placeholder="e.g. Would you wear this to a dinner party?" />
+                    <div id="modelPageMcOptionsContainer" class="hidden">
+                      <label class="field-label">Answer options</label>
+                      <div id="modelPageMcOptionsList">
+                        <input class="mc-option" placeholder="Option 1" />
+                        <input class="mc-option" placeholder="Option 2" />
+                      </div>
+                      <button id="modelPageAddMcOption" type="button" class="secondary" style="margin-top:6px">+ Add option</button>
+                    </div>
+                    <button id="modelPageAddQuestionButton" type="button">Add Question</button>
+                    <p id="modelPageQuestionMessage" class="muted"></p>
+                  </div>
                 </div>
 
 
@@ -444,6 +467,6 @@
   <div id="toastNotification" class="toast hidden"></div>
 
   <script src="./firebase-config.js?v=8"></script>
-  <script type="module" src="./app.js?v=16"></script>
+  <script type="module" src="./app.js?v=17"></script>
 </body>
 </html>

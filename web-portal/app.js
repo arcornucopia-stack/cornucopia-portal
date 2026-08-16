@@ -219,6 +219,23 @@ function bindModals() {
     _modelPageItem = null;
   });
 
+  // Model page – add question (this is what the submissions table's "Edit"
+  // button actually lands on, so a model with 0 questions at upload time can
+  // still get one added later)
+  byId("modelPageQuestionTypeSelect")?.addEventListener("change", () => {
+    const isMc = byId("modelPageQuestionTypeSelect").value === "multiple_choice";
+    byId("modelPageMcOptionsContainer")?.classList.toggle("hidden", !isMc);
+  });
+  byId("modelPageAddMcOption")?.addEventListener("click", () => {
+    const list = byId("modelPageMcOptionsList");
+    if (!list) return;
+    const inp = document.createElement("input");
+    inp.className = "mc-option";
+    inp.placeholder = `Option ${list.querySelectorAll(".mc-option").length + 1}`;
+    list.appendChild(inp);
+  });
+  byId("modelPageAddQuestionButton")?.addEventListener("click", addQuestionToModelPage);
+
 
 }
 
@@ -464,7 +481,7 @@ function closeUploadModal(force = false) {
   const wrapper = byId("uploadStepsWrapper");
   if (step1) { step1.style.cssText = ""; step1.classList.remove("upload-step-exiting"); }
   if (step2) { step2.style.cssText = "display:none"; step2.classList.remove("upload-step-entering"); }
-  if (wrapper) wrapper.style.height = "";
+  if (wrapper) { wrapper.style.height = ""; wrapper.classList.remove("is-transitioning"); }
   const titleEl = byId("uploadModalTitle");
   if (titleEl) titleEl.textContent = "New Upload";
   byId("doneUploadModal")?.classList.add("hidden");
@@ -514,6 +531,7 @@ function transitionUploadToQuestions(submissionId) {
   step2.style.display  = "grid";
   step2.style.opacity  = "0";
   step2.style.transform = "translateY(36px)";
+  wrapper.classList.add("is-transitioning");
 
   // Force the browser to commit step 2's off-screen position before we
   // start the transition (a single reflow is all we need)
@@ -524,12 +542,15 @@ function transitionUploadToQuestions(submissionId) {
   step2.style.transform  = "translateY(0)";
   step2.style.opacity    = "1";
 
-  // After the animation settles, strip the inline transition properties
-  // and reveal the Done button
+  // After the animation settles, strip the inline transition properties,
+  // let the wrapper grow freely again (so adding several multiple-choice
+  // options doesn't clip the Add Question button off the bottom), and
+  // reveal the Done button
   setTimeout(() => {
     step2.style.transition = "";
     step2.style.transform  = "";
     step2.style.opacity    = "";
+    wrapper.classList.remove("is-transitioning");
     byId("doneUploadModal")?.classList.remove("hidden");
   }, 400);
 }
@@ -1143,6 +1164,7 @@ async function ensurePublishedModel(submissionId, item) {
     name: item.displayName || stripGlbExtension(item.fileName || modelKey),
     modelNamee: modelKey,
     picPathh: item.picPathh || existingModel.picPathh || modelKey,
+    description: item.description || existingModel.description || "",
     question: await resolveSubmissionQuestion(submissionId, item),
     // Lets the apps fetch the submission's full typed question set
     // (yes/no, multiple_choice, rating, open_text) instead of just the
@@ -1154,6 +1176,7 @@ async function ensurePublishedModel(submissionId, item) {
     createdAt: existingModel.createdAt || Date.now(),
     data: {
       sent: toInt(existingModel?.data?.sent, 0),
+      opens: toInt(existingModel?.data?.opens, 0),
       saved: toInt(existingModel?.data?.saved, 0),
       yes: toInt(existingModel?.data?.yes, 0),
       no: toInt(existingModel?.data?.no, 0),
@@ -1999,6 +2022,18 @@ async function openModelPage(item) {
   const descEl = byId("modelPageDescription");
   if (descEl) descEl.textContent = item.description || "No description provided.";
 
+  // Fresh add-question form on every visit, not whatever was left typed
+  // in from a previous model's page.
+  const mpQMsg = byId("modelPageQuestionMessage");
+  if (mpQMsg) mpQMsg.textContent = "";
+  const mpQText = byId("modelPageQuestionTextInput");
+  if (mpQText) mpQText.value = "";
+  const mpQType = byId("modelPageQuestionTypeSelect");
+  if (mpQType) mpQType.value = "yes_no";
+  byId("modelPageMcOptionsContainer")?.classList.add("hidden");
+  const mpMcList = byId("modelPageMcOptionsList");
+  if (mpMcList) mpMcList.innerHTML = '<input class="mc-option" placeholder="Option 1" /><input class="mc-option" placeholder="Option 2" />';
+
   byId("modelPageLoading")?.classList.remove("hidden");
   byId("modelPageContent")?.classList.add("hidden");
 
@@ -2136,6 +2171,59 @@ async function renderModelPageQuestions(item, yes, no, opens, sent) {
 
     list.appendChild(card);
   });
+}
+
+/** Re-derives the yes/no/opens/sent stats renderModelPageQuestions needs and
+ * re-renders the list - used after adding a question, when those values
+ * aren't already sitting in local scope from the initial openModelPage load. */
+async function refreshModelPageQuestions() {
+  if (!_modelPageItem) return;
+  const modelKey = _modelPageItem.modelKey;
+  let data = { yes: 0, no: 0, opens: 0, sent: 0 };
+  if (modelKey) {
+    const snap = await get(dbRef(db, `${ROOT}/models/${modelKey}/data`));
+    if (snap.exists()) data = { ...data, ...snap.val() };
+  }
+  const sent = toInt(data.sent, 0) || toInt(_modelPageItem.pushedCount, 0);
+  await renderModelPageQuestions(_modelPageItem, toInt(data.yes, 0), toInt(data.no, 0), toInt(data.opens, 0), sent);
+}
+
+async function addQuestionToModelPage() {
+  if (!currentDetailSubmissionId || !_modelPageItem) return;
+  const type  = byId("modelPageQuestionTypeSelect")?.value;
+  const text  = (byId("modelPageQuestionTextInput")?.value || "").trim();
+  const msgEl = byId("modelPageQuestionMessage");
+
+  if (!text) { if (msgEl) msgEl.textContent = "Question text is required."; return; }
+
+  let options = [];
+  if (type === "multiple_choice") {
+    options = [...(byId("modelPageMcOptionsList")?.querySelectorAll(".mc-option") || [])]
+      .map((el) => el.value.trim()).filter(Boolean);
+    if (options.length < 2) { if (msgEl) msgEl.textContent = "Add at least 2 options."; return; }
+  }
+
+  try {
+    const questionRef = push(dbRef(db, `${ROOT}/submissions/${currentDetailSubmissionId}/questions`));
+    await set(questionRef, { type, text, options, createdAt: Date.now() });
+
+    if (msgEl) msgEl.textContent = "";
+    const textInput = byId("modelPageQuestionTextInput");
+    if (textInput) textInput.value = "";
+    const mcList = byId("modelPageMcOptionsList");
+    if (mcList) mcList.innerHTML = '<input class="mc-option" placeholder="Option 1" /><input class="mc-option" placeholder="Option 2" />';
+    byId("modelPageMcOptionsContainer")?.classList.add("hidden");
+    const typeSelect = byId("modelPageQuestionTypeSelect");
+    if (typeSelect) typeSelect.value = "yes_no";
+
+    await refreshModelPageQuestions();
+
+    const snap = await get(dbRef(db, `${ROOT}/submissions/${currentDetailSubmissionId}/questions`));
+    const cached = submissionsCache.find((x) => x.id === currentDetailSubmissionId);
+    if (cached) { cached.questions = snap.exists() ? snap.val() : {}; renderSubmissionRows(); }
+  } catch (err) {
+    if (msgEl) msgEl.textContent = `Could not add question: ${err.message || err}`;
+  }
 }
 
 async function renderModelPageDistribution(item) {

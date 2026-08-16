@@ -912,9 +912,14 @@ button[disabled] {
 
 /* ─── Upload modal two-step slide animation ──────────────────────────── */
 
-/* Clips the animated steps so only the active one is visible */
+/* Clips the animated steps so only the active one is visible. Only applied
+   while the slide-up entrance is actually running (see transitionUploadToQuestions) -
+   left on permanently, a step 2 that grows past its original height (e.g. several
+   multiple-choice options) would have its own Add Question button clipped off. */
 .upload-steps-wrapper {
   position: relative;
+}
+.upload-steps-wrapper.is-transitioning {
   overflow: hidden;
 }
 
