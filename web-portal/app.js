@@ -2021,6 +2021,7 @@ async function openModelPage(item) {
   if (metaEl)  metaEl.textContent  = `Status: ${statusLabel(item)} · Uploaded ${formatTs(item.createdAt)}`;
   const descEl = byId("modelPageDescription");
   if (descEl) descEl.textContent = item.description || "No description provided.";
+  renderModelPageAttributes(item.attributes || {});
 
   // Fresh add-question form on every visit, not whatever was left typed
   // in from a previous model's page.
@@ -2095,6 +2096,29 @@ async function openModelPage(item) {
     const el = byId("modelPageLoading");
     if (el) el.textContent = `Could not load: ${err.message || err}`;
   }
+}
+
+/** Renders the free-form key/value attributes set via the "Details" modal
+ * (My Uploads' Details button, saveModelDetails) - that modal writes to
+ * submissions/{id}/attributes but nothing previously read it back on this
+ * page, so anything added there was invisible after saving. */
+function renderModelPageAttributes(attributes) {
+  const card = byId("modelPageAttributesCard");
+  const list = byId("modelPageAttributesList");
+  if (!list) return;
+
+  const entries = Object.entries(attributes || {}).filter(([key]) => key);
+  if (!entries.length) {
+    if (card) card.style.display = "none";
+    return;
+  }
+  if (card) card.style.display = "";
+
+  list.innerHTML = entries.map(([key, val]) => `
+    <div class="attr-row">
+      <span class="attr-row-label">${escapeHtml(key)}</span>
+      <span class="attr-row-value">${escapeHtml(String(val))}</span>
+    </div>`).join("");
 }
 
 async function renderModelPageQuestions(item, yes, no, opens, sent) {

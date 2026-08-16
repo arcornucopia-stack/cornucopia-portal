@@ -768,6 +768,27 @@ button[disabled] {
   transition: border-color 0.15s, background 0.15s;
 }
 
+/* Read-only attributes display on the model detail page */
+.attr-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid #eef4f1;
+}
+
+.attr-row:last-child { border-bottom: none; }
+
+.attr-row-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--soft);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.attr-row-value { font-size: 14px; color: var(--ink); font-weight: 600; }
+
 .attr-input:focus {
   outline: none;
   border-color: var(--brand);
