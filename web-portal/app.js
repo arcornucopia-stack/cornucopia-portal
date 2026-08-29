@@ -43,7 +43,7 @@ if (emailjsReady) {
 
 // ── Version stamp – if you don't see this line in the Console after page load,
 //    the browser is still serving old cached code. Hard-reload with Ctrl+Shift+R.
-console.log("%c[Cornucopia] app.js v10 loaded ✓", "color:green;font-weight:bold;font-size:14px");
+console.log("%c[Cornucopia] app.js v11 loaded ✓", "color:green;font-weight:bold;font-size:14px");
 
 const authScreen = byId("authScreen");
 const appScreen = byId("appScreen");
@@ -94,6 +94,14 @@ const mailingListBody = byId("mailingListBody");
 const MAILING_LIST_CAP = 1000;
 let mailingListCache = {};
 
+const categoryFilterSelect = byId("categoryFilterSelect");
+const newCategoryInput = byId("newCategoryInput");
+const addCategoryButton = byId("addCategoryButton");
+const categoriesList = byId("categoriesList");
+const categoriesMessage = byId("categoriesMessage");
+let categoriesCache = {};
+let currentCategoryFilter = "";
+
 const totalUploads = byId("totalUploads");
 const approvedUploads = byId("approvedUploads");
 const openCount = byId("openCount");
@@ -133,6 +141,12 @@ sendPartnerModelButton?.addEventListener("click", sendApprovedPartnerModelToUser
 refreshPartnerSubscribersButton?.addEventListener("click", loadPartnerSubscriptionAdminData);
 savePartnerSubscribersButton?.addEventListener("click", savePartnerSubscribersMapping);
 mailingListUploadButton?.addEventListener("click", handleMailingListUpload);
+addCategoryButton?.addEventListener("click", addCategory);
+categoryFilterSelect?.addEventListener("change", () => {
+  currentCategoryFilter = categoryFilterSelect.value;
+  renderSubmissionRows();
+});
+byId("modelPageSaveCategoryButton")?.addEventListener("click", saveModelPageCategory);
 partnerSelectForSubscribers?.addEventListener("change", syncPartnerSubscribersSelection);
 byId("cardTotalUploads")?.addEventListener("click", () => { setActiveScreen("uploads"); setSubmissionFilter("all"); });
 byId("cardApprovedUploads")?.addEventListener("click", () => { setActiveScreen("uploads"); setSubmissionFilter("approved"); });
@@ -718,7 +732,8 @@ async function refreshAll() {
     loadPartnerSubscribersForUpload(),
     loadPartnerDeliveryData(),
     loadPortalNotifications(),
-    loadMailingList()
+    loadMailingList(),
+    loadCategories()
   ]);
 }
 
@@ -1173,6 +1188,8 @@ async function ensurePublishedModel(submissionId, item) {
     submissionId,
     storagePath: item.storagePath || "",
     businessName: item.businessName || existingModel.businessName || "",
+    category: item.category || existingModel.category || null,
+    categoryName: item.categoryName || existingModel.categoryName || null,
     // Newest-first ordering in the apps; keep the original date on re-push
     createdAt: existingModel.createdAt || Date.now(),
     data: {
@@ -1764,6 +1781,165 @@ async function handleMailingListUpload() {
   }
 }
 
+// ─── Category management (Epic 4, portal-only per R-4.1) ───────────────────
+// The app has no catalog-browse screen today (users only ever see models
+// explicitly assigned to them), so there's nowhere for an "empty category"
+// to show up on the mobile side (R-4.2) — categories are admin/portal
+// organization for now. The category filter dropdown only lists categories
+// that currently have at least one model, which is the portal-side
+// equivalent of that rule.
+
+async function loadCategories() {
+  if (normalizeRole(currentProfile?.role) !== "admin") return;
+  try {
+    const snap = await get(dbRef(db, `${ROOT}/categories`));
+    categoriesCache = snap.exists() ? snap.val() : {};
+    renderCategoriesList();
+    renderCategoryFilterOptions();
+    if (_modelPageItem) renderModelPageCategory(_modelPageItem);
+  } catch (err) {
+    if (categoriesMessage) categoriesMessage.textContent = `Could not load categories: ${err.message || err}`;
+  }
+}
+
+async function addCategory() {
+  const name = (newCategoryInput?.value || "").trim();
+  if (!name) {
+    if (categoriesMessage) categoriesMessage.textContent = "Enter a category name.";
+    return;
+  }
+  const exists = Object.values(categoriesCache).some((c) => (c.name || "").toLowerCase() === name.toLowerCase());
+  if (exists) {
+    if (categoriesMessage) categoriesMessage.textContent = "That category already exists.";
+    return;
+  }
+  try {
+    const ref = push(dbRef(db, `${ROOT}/categories`));
+    await set(ref, { name, createdAt: Date.now() });
+    if (newCategoryInput) newCategoryInput.value = "";
+    if (categoriesMessage) categoriesMessage.textContent = `Added "${name}".`;
+    await loadCategories();
+  } catch (err) {
+    if (categoriesMessage) categoriesMessage.textContent = `Could not add category: ${err.message || err}`;
+  }
+}
+
+async function deleteCategory(categoryId, name) {
+  const count = submissionsCache.filter((s) => s.category === categoryId).length;
+  const confirmMsg = count > 0
+    ? `Delete "${name}"? ${count} model(s) using it will become uncategorized.`
+    : `Delete "${name}"?`;
+  if (!confirm(confirmMsg)) return;
+
+  try {
+    const updates = {};
+    submissionsCache.forEach((s) => {
+      if (s.category === categoryId) {
+        updates[`${ROOT}/submissions/${s.id}/category`] = null;
+        updates[`${ROOT}/submissions/${s.id}/categoryName`] = null;
+        if (s.modelKey) {
+          updates[`${ROOT}/models/${s.modelKey}/category`] = null;
+          updates[`${ROOT}/models/${s.modelKey}/categoryName`] = null;
+        }
+      }
+    });
+    updates[`${ROOT}/categories/${categoryId}`] = null;
+    await update(dbRef(db), updates);
+    if (categoriesMessage) categoriesMessage.textContent = `Deleted "${name}".`;
+    await Promise.all([loadCategories(), loadMySubmissions()]);
+  } catch (err) {
+    if (categoriesMessage) categoriesMessage.textContent = `Could not delete category: ${err.message || err}`;
+  }
+}
+
+function renderCategoriesList() {
+  if (!categoriesList) return;
+  const entries = Object.entries(categoriesCache).sort((a, b) => (a[1].name || "").localeCompare(b[1].name || ""));
+  categoriesList.innerHTML = "";
+  if (!entries.length) {
+    categoriesList.innerHTML = "<div class='muted'>No categories yet.</div>";
+    return;
+  }
+  entries.forEach(([id, cat]) => {
+    const count = submissionsCache.filter((s) => s.category === id).length;
+    const row = document.createElement("div");
+    row.className = "user-row";
+    row.innerHTML = `
+      <span style="flex:1">${escapeHtml(cat.name)} <small class="muted">(${count} model${count === 1 ? "" : "s"})</small></span>
+      <button class="danger" type="button" style="padding:4px 10px;font-size:12px">Delete</button>
+    `;
+    row.querySelector("button").addEventListener("click", () => deleteCategory(id, cat.name));
+    categoriesList.appendChild(row);
+  });
+}
+
+function renderCategoryFilterOptions() {
+  if (!categoryFilterSelect) return;
+  const nonEmpty = Object.entries(categoriesCache)
+    .filter(([id]) => submissionsCache.some((s) => s.category === id))
+    .sort((a, b) => (a[1].name || "").localeCompare(b[1].name || ""));
+
+  const previous = categoryFilterSelect.value;
+  categoryFilterSelect.innerHTML = '<option value="">All categories</option>'
+    + nonEmpty.map(([id, cat]) => `<option value="${id}">${escapeHtml(cat.name)}</option>`).join("");
+
+  if (nonEmpty.some(([id]) => id === previous)) {
+    categoryFilterSelect.value = previous;
+  } else if (previous) {
+    categoryFilterSelect.value = "";
+    currentCategoryFilter = "";
+  }
+}
+
+/** Category assignment on the model detail page — the one place a submission
+ * actually gets tagged; the categories card above only manages the list. */
+function renderModelPageCategory(item) {
+  if (normalizeRole(currentProfile?.role) !== "admin") return;
+  const select = byId("modelPageCategorySelect");
+  const msg = byId("modelPageCategoryMessage");
+  if (!select) return;
+
+  const options = Object.entries(categoriesCache).sort((a, b) => (a[1].name || "").localeCompare(b[1].name || ""));
+  select.innerHTML = '<option value="">Uncategorized</option>'
+    + options.map(([id, cat]) => `<option value="${id}">${escapeHtml(cat.name)}</option>`).join("");
+  select.value = item.category || "";
+  if (msg) msg.textContent = "";
+}
+
+async function saveModelPageCategory() {
+  const item = _modelPageItem;
+  if (!item?.id) return;
+  const select = byId("modelPageCategorySelect");
+  const msg = byId("modelPageCategoryMessage");
+  const categoryId = select?.value || "";
+  const categoryName = categoryId ? (categoriesCache[categoryId]?.name || "") : "";
+
+  if (msg) msg.textContent = "Saving...";
+  try {
+    await update(dbRef(db, `${ROOT}/submissions/${item.id}`), {
+      category: categoryId || null,
+      categoryName: categoryName || null
+    });
+    if (item.modelKey) {
+      const modelSnap = await get(dbRef(db, `${ROOT}/models/${item.modelKey}`));
+      if (modelSnap.exists()) {
+        await update(dbRef(db, `${ROOT}/models/${item.modelKey}`), {
+          category: categoryId || null,
+          categoryName: categoryName || null
+        });
+      }
+    }
+    const cached = submissionsCache.find((s) => s.id === item.id);
+    if (cached) { cached.category = categoryId || null; cached.categoryName = categoryName || null; }
+    if (msg) msg.textContent = "Saved.";
+    renderCategoriesList();
+    renderCategoryFilterOptions();
+    renderSubmissionRows();
+  } catch (err) {
+    if (msg) msg.textContent = `Could not save: ${err.message || err}`;
+  }
+}
+
 async function loadPartnerDeliveryData() {
   if (!currentProfile || (currentProfile.role || "").toLowerCase() === "admin") return;
   if (partnerDeliveryMessage) partnerDeliveryMessage.textContent = "";
@@ -2185,6 +2361,9 @@ function renderSubmissionRows() {
   } else if (currentSubmissionFilter === "pending") {
     rows = rows.filter((item) => item.status === "pending");
   }
+  if (currentCategoryFilter) {
+    rows = rows.filter((item) => item.category === currentCategoryFilter);
+  }
 
   const isAdmin = normalizeRole(currentProfile?.role) === "admin";
 
@@ -2241,7 +2420,11 @@ function renderSubmissionRows() {
     mySubmissionsBody.appendChild(tr);
   });
 
-  if (isAdmin) bindSubmissionActionButtons(mySubmissionsBody);
+  if (isAdmin) {
+    bindSubmissionActionButtons(mySubmissionsBody);
+    renderCategoriesList();
+    renderCategoryFilterOptions();
+  }
 }
 
 // ─── Model Page (full-screen detail view) ────────────────────────────────────
@@ -2331,6 +2514,7 @@ async function openModelPage(item) {
     renderModelPageThumbnail(item.thumbnailUrl || null);
 
     renderModelPageActions(item);
+    renderModelPageCategory(item);
 
     byId("modelPageLoading")?.classList.add("hidden");
     byId("modelPageContent")?.classList.remove("hidden");

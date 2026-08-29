@@ -20,15 +20,15 @@ Suggested build order: data model first (everything else reads/writes it), then 
 ## Phase 1 — Admin Portal Restructure
 
 - [x] Build the new **Manage Uploads** page: "My Uploads" look/state + Approve/Reject/Push-to-App table functionality (R-2.1) — reused the existing Uploads screen/table for admins rather than a duplicate screen; nav button + breadcrumb relabel to "Manage Uploads" for admin role
-- [ ] Reduce admin left nav to three items; confirm final naming with stakeholder (open question) (R-2.2) — currently 2 (Dashboard, Manage Uploads); lands at 3 once Manage Partner (R-3.1) ships
-- [ ] Add **Manage Partner** nav item hosting the Partner Subscriptions screen (R-3.1) — not done yet; Partner Subscriptions still lives inside the merged Uploads/Manage Uploads screen
+- [x] Reduce admin left nav to three items (R-2.2) — Dashboard, Manage Uploads, Manage Partner
+- [x] Add **Manage Partner** nav item hosting the Partner Subscriptions screen (R-3.1) — moved out of the Uploads screen into its own admin-only screen; no JS changes needed since the existing logic was already keyed by element ID, not by which screen contained it
 - [x] Reorder tabs so **Pending** comes before **Approved** (R-2.3)
 - [x] Route "new partner upload" notifications directly to the Pending tab (R-2.4)
 - [x] Add Approve / Reject / Push to App buttons inside the product detail page, below the thumbnail (R-2.5)
-- [ ] Build category management screen for admins (R-4.1)
-- [ ] Enforce: categories with 0 models are hidden from the mobile app (R-4.2)
+- [x] Build category management screen for admins (R-4.1) — scoped to portal-only per decision below
+- [~] Enforce: categories with 0 models are hidden from the mobile app (R-4.2) — **scope decision:** the app has no catalog-browse screen at all (users only ever see models explicitly assigned to them), so there's nowhere for an empty category to "show" today. Implemented the portal-side equivalent instead: the category filter dropdown in Manage Uploads only lists categories with ≥1 model. Revisit for real if a catalog-browse screen is ever built in the app.
 
-Epic 2 shipped 2026-08-29 (uncommitted, pending test): the old separate "Manage Uploads" / Pending Tasks screen was removed entirely — its approve/reject/push table now lives inside the same screen as "My Uploads" (relabeled per role), and the same three buttons were added to the model detail page. Both places share one click handler so they can't drift out of sync.
+Epics 2, 3, and 4 shipped 2026-08-29 (Epic 1/2 committed & deployed; Epic 3/4 uncommitted, pending test): the old separate "Manage Uploads" / Pending Tasks screen was removed entirely — its approve/reject/push table now lives inside the same screen as "My Uploads" (relabeled per role), and the same three buttons were added to the model detail page. Both places share one click handler so they can't drift out of sync. Partner Subscriptions now has its own "Manage Partner" nav item, landing the admin nav at exactly three items. Category management (admin CRUD on `cornucopia/categories`, category assignment on the model detail page, category filter on Manage Uploads) is portal-only for now — Phase 1 is complete.
 
 ## Phase 2 — Partner Mailing List ✅ (v1 shipped 2026-08-28)
 

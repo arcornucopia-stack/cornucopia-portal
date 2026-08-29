@@ -63,6 +63,8 @@ This document consolidates the 2026-08-16 planning notes into discrete, numbered
 | R-4.1 | Build an admin-side system for creating/editing/managing product categories. |
 | R-4.2 | A category with **0 models** in it must not appear on the mobile app front end. |
 
+**Scope decision (2026-08-29):** the app has no catalog-browse screen today — users only ever see models explicitly assigned to them, never a general list/grid of all products. R-4.2 as written presumes a browsing UI that doesn't exist, so building it for real would mean a new app feature (a "Browse by Category" screen), not just an admin backend tweak. Decided to ship categories as **portal-only organization** for now: admins can create/delete categories and tag models with one; the "hide empty categories" rule is implemented as the portal's category filter dropdown only listing categories with ≥1 model. Revisit R-4.2 literally if a catalog-browse screen is ever built in the app.
+
 ---
 
 ## Epic 5 — Share Tracking (Data Capture)

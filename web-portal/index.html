@@ -29,6 +29,7 @@
       <button class="nav-btn active" data-screen="dashboard">Dashboard</button>
       <button class="nav-btn" id="uploadsNavButton" data-screen="uploads">My Uploads</button>
       <button class="nav-btn partner-only" data-screen="mailingList">Mailing List</button>
+      <button class="nav-btn admin-only" data-screen="managePartner">Manage Partner</button>
       <button class="nav-btn" id="logoutButton">Sign out</button>
     </aside>
 
@@ -96,6 +97,9 @@
               <button id="filterAllSubmissions" type="button" class="filter-btn active">All</button>
               <button id="filterPendingSubmissions" type="button" class="filter-btn">Pending</button>
               <button id="filterApprovedSubmissions" type="button" class="filter-btn">Approved</button>
+              <select id="categoryFilterSelect" class="admin-only" title="Filter by category">
+                <option value="">All categories</option>
+              </select>
             </div>
             <button id="openUploadModal" type="button" class="upload-trigger">+ New Upload</button>
           </div>
@@ -126,20 +130,34 @@
           </div>
 
           <div class="admin-only">
-            <h3>Partner Subscriptions</h3>
+            <h3>Categories</h3>
+            <p class="muted" style="margin:0 0 12px">Organize models into categories. Assign a category to a model from its detail page.</p>
             <div class="upload-box">
-              <select id="partnerSelectForSubscribers">
-                <option value="">Select partner...</option>
-              </select>
-              <div id="availableUsersForPartnerList" class="users-list"></div>
               <div class="row-actions">
-                <button id="refreshPartnerSubscribersButton" class="secondary" type="button">Refresh Partners/Users</button>
-                <button id="savePartnerSubscribersButton" class="success" type="button">Save Subscriber Mapping</button>
+                <input id="newCategoryInput" placeholder="e.g. Home Decor" style="flex:1" />
+                <button id="addCategoryButton" class="secondary" type="button">Add Category</button>
               </div>
-              <p id="partnerSubscribersMessage" class="muted"></p>
+              <div id="categoriesList" class="users-list" style="margin-top:10px"></div>
+              <p id="categoriesMessage" class="muted"></p>
             </div>
           </div>
 
+        </section>
+
+        <section id="managePartner" class="screen admin-only">
+          <h3>Partner Subscriptions</h3>
+          <p class="muted" style="margin:0 0 12px">Choose which end-users a partner is allowed to send their approved models to.</p>
+          <div class="upload-box">
+            <select id="partnerSelectForSubscribers">
+              <option value="">Select partner...</option>
+            </select>
+            <div id="availableUsersForPartnerList" class="users-list"></div>
+            <div class="row-actions">
+              <button id="refreshPartnerSubscribersButton" class="secondary" type="button">Refresh Partners/Users</button>
+              <button id="savePartnerSubscribersButton" class="success" type="button">Save Subscriber Mapping</button>
+            </div>
+            <p id="partnerSubscribersMessage" class="muted"></p>
+          </div>
         </section>
 
         <section id="mailingList" class="screen partner-only">
@@ -200,6 +218,17 @@
                 <div class="mp-card">
                   <h3 class="mp-section-title">Description</h3>
                   <p id="modelPageDescription" class="muted"></p>
+                </div>
+
+                <div class="mp-card admin-only">
+                  <h3 class="mp-section-title">Category</h3>
+                  <div class="row-actions">
+                    <select id="modelPageCategorySelect" style="flex:1">
+                      <option value="">Uncategorized</option>
+                    </select>
+                    <button id="modelPageSaveCategoryButton" class="secondary" type="button">Save</button>
+                  </div>
+                  <p id="modelPageCategoryMessage" class="muted"></p>
                 </div>
 
                 <div class="mp-card" id="modelPageAttributesCard">
@@ -504,6 +533,6 @@
   <script src="./firebase-config.js?v=8"></script>
   <script src="./emailjs-config.js?v=1"></script>
   <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
-  <script type="module" src="./app.js?v=20"></script>
+  <script type="module" src="./app.js?v=21"></script>
 </body>
 </html>

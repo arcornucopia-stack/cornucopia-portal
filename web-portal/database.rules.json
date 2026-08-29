@@ -56,6 +56,15 @@
         }
       },
 
+      "categories": {
+        ".read": "auth != null",
+        ".write": "auth != null && root.child('cornucopia/users').child(auth.uid).child('role').val() === 'admin'",
+        "$categoryId": {
+          ".read": "auth != null",
+          ".write": "auth != null && root.child('cornucopia/users').child(auth.uid).child('role').val() === 'admin'"
+        }
+      },
+
       "models_uploads": {
         ".read": "auth != null",
         ".write": "auth != null",
