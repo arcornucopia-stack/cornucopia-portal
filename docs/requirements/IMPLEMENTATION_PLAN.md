@@ -39,12 +39,18 @@ Epics 2, 3, and 4 shipped 2026-08-29 (Epic 1/2 committed & deployed; Epic 3/4 un
 
 Known v1 limitations to revisit later: EmailJS free-tier rate/volume limits make it unsuited to large bulk sends (see web-portal/README.md); no raw CSV file is retained (only parsed rows); suppression list is per-partner, not shared (OQ-2 still open).
 
-## Phase 3 — Partner Monetization Features
+## Phase 3 — Partner Monetization Features ✅ shipped 2026-08-29 (uncommitted, pending test)
 
-- [ ] Add pricing + deal-type (radio) fields to the partner portal (R-9.1, R-9.2)
-- [ ] Add CTA configuration UI to the partner portal (button type + link, or none) (R-9.4, R-9.5)
-- [ ] Build mobile app deal template(s) reflecting the configured deal type (R-9.3)
-- [ ] Build mobile app CTA button rendering, including the no-CTA reflow layout (R-9.5)
+- [x] Add pricing + deal-type (radio) fields to the partner portal (R-9.1, R-9.2) — new "Pricing & Deal" card on the model detail page (Brand Value, Price, None/Discount/BOGO radios)
+- [x] Add CTA configuration UI to the partner portal (button type + link, or none) (R-9.4, R-9.5) — new "Call to Action" card; link is required and must start with http(s):// unless type is "none"
+- [x] Build mobile app deal template(s) reflecting the configured deal type (R-9.3) — Brand Value/Price cards on Product Details now hide individually when unset and render real data instead of static placeholders; deal type shows as a "(Discount)"/"(BOGO)" suffix on the Price caption rather than a separate badge, to avoid reworking the screen's fixed pixel layout
+- [x] Build mobile app CTA button rendering, including the no-CTA reflow layout (R-9.5) — the existing stubbed "Buy Now" button is now a real, data-driven CTA (label + `Application.OpenURL(ctaLink)`); when no CTA is configured, Save/Share resize and recenter at runtime to fill the row instead of leaving an empty slot
+
+Both portal open questions this phase depended on are now resolved: **OQ-7** (deal + CTA coexistence) — yes, they're independent and can both show at once, confirmed directly by the meeting-notes mockup showing Brand Value/Price *and* a Buy Now button together. **OQ-8** (CTA link validation) — light touch, must start with `http://` or `https://`, nothing stricter.
+
+Like Description, pricing/CTA edits only write to the submission and take effect on the live app after the next Approve/Push — not instantly. This isn't a shortcut, it's consistency with how every other partner-editable field already behaves, and (unlike Category, which is admin-only) it avoids a database-rules change, since partners have no write access to the published `cornucopia/models/{modelKey}` record.
+
+Requires a **Build Product Details Screen** (or Build All Screens) rebuild in the Unity Editor before testing on device — this is a structural scene change (renamed `BuyButton` → `CtaButton`, dynamic Brand Value/Price cards), not just a script recompile.
 
 ## Phase 4 — Mobile App Chrome & UX Polish
 

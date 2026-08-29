@@ -137,9 +137,9 @@ models/{modelId}/
 | R-9.4 | Partners can configure a **call-to-action (CTA) button** per product, choosing one of: **Buy Now**, **Subscribe**, **Donate**, **Pre-Order**, **Join Waitlist** — each with a partner-supplied link. |
 | R-9.5 | Partners may instead choose **No CTA**, in which case the product screen shows only **Save** and **Share**, and the layout reflows/adjusts to fill the space the CTA button would have occupied (no dead space). |
 
-**Open questions:**
-- Can a product have both a deal (R-9.2) and a CTA (R-9.4) simultaneously, or are they mutually exclusive layouts?
-- Link validation — do we restrict CTA links to https:// / known domains, or accept any URL as-is?
+**Resolved (2026-08-29):**
+- Can a product have both a deal and a CTA simultaneously? **Yes** — the meeting-notes mockup itself shows Brand Value/Price and a Buy Now button together; they're independent, not exclusive layouts.
+- Link validation? **Light touch** — must start with `http://` or `https://`, nothing stricter (no domain allowlist).
 
 ---
 
@@ -209,11 +209,14 @@ models/{modelId}/
 
 ## Summary of Open Questions
 
+**Still open:**
 1. Mailing-list overage pricing/payment flow (Epic 1).
 2. Opt-in/suppression list scope — per-partner or shared (Epic 1).
-3. Final 3-item admin left-nav naming/composition (Epic 2).
-4. Behavior of in-page action buttons after approval (Epic 2).
-5. Share destination capture limits imposed by native OS share sheets (Epic 5).
-6. Migration plan for existing `answers` data into `question_answers` (Epic 7).
-7. Can a product show both a deal and a CTA at once (Epic 9)?
-8. CTA link validation rules (Epic 9).
+3. Behavior of in-page action buttons after approval (Epic 2).
+4. Share destination capture limits imposed by native OS share sheets (Epic 5).
+5. Migration plan for existing `answers` data into `question_answers` (Epic 7).
+
+**Resolved:**
+- ~~Final 3-item admin left-nav naming/composition (Epic 2)~~ — Dashboard, Manage Uploads, Manage Partner (shipped 2026-08-29).
+- ~~Can a product show both a deal and a CTA at once (Epic 9)?~~ — Yes, confirmed by the mockup (shipped 2026-08-29).
+- ~~CTA link validation rules (Epic 9)~~ — must start with http(s):// (shipped 2026-08-29).

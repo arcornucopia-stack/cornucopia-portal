@@ -231,6 +231,39 @@
                   <p id="modelPageCategoryMessage" class="muted"></p>
                 </div>
 
+                <div class="mp-card">
+                  <h3 class="mp-section-title">Pricing &amp; Deal</h3>
+                  <label class="field-label">Brand Value</label>
+                  <input id="modelPageBrandValueInput" placeholder="e.g. $1,200" />
+                  <label class="field-label">Price</label>
+                  <input id="modelPagePriceInput" placeholder="e.g. $900.00" />
+                  <label class="field-label">Deal type</label>
+                  <div class="row-actions" style="gap:16px;flex-wrap:wrap">
+                    <label><input type="radio" name="modelPageDealType" value="none" checked /> None</label>
+                    <label><input type="radio" name="modelPageDealType" value="discount" /> Discount</label>
+                    <label><input type="radio" name="modelPageDealType" value="bogo" /> BOGO</label>
+                  </div>
+                  <button id="modelPageSavePricingButton" class="secondary" type="button" style="margin-top:10px">Save Pricing</button>
+                  <p id="modelPagePricingMessage" class="muted"></p>
+                </div>
+
+                <div class="mp-card">
+                  <h3 class="mp-section-title">Call to Action</h3>
+                  <label class="field-label">Button</label>
+                  <select id="modelPageCtaTypeSelect">
+                    <option value="none">No call to action (Save/Share only)</option>
+                    <option value="buy_now">Buy Now</option>
+                    <option value="subscribe">Subscribe</option>
+                    <option value="donate">Donate</option>
+                    <option value="pre_order">Pre-Order</option>
+                    <option value="join_waitlist">Join Waitlist</option>
+                  </select>
+                  <label class="field-label">Link</label>
+                  <input id="modelPageCtaLinkInput" placeholder="https://..." />
+                  <button id="modelPageSaveCtaButton" class="secondary" type="button" style="margin-top:10px">Save Call to Action</button>
+                  <p id="modelPageCtaMessage" class="muted"></p>
+                </div>
+
                 <div class="mp-card" id="modelPageAttributesCard">
                   <h3 class="mp-section-title">Details</h3>
                   <div id="modelPageAttributesList"></div>
@@ -533,6 +566,6 @@
   <script src="./firebase-config.js?v=8"></script>
   <script src="./emailjs-config.js?v=1"></script>
   <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
-  <script type="module" src="./app.js?v=21"></script>
+  <script type="module" src="./app.js?v=22"></script>
 </body>
 </html>

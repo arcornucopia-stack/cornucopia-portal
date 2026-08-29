@@ -43,7 +43,7 @@ if (emailjsReady) {
 
 // ── Version stamp – if you don't see this line in the Console after page load,
 //    the browser is still serving old cached code. Hard-reload with Ctrl+Shift+R.
-console.log("%c[Cornucopia] app.js v11 loaded ✓", "color:green;font-weight:bold;font-size:14px");
+console.log("%c[Cornucopia] app.js v12 loaded ✓", "color:green;font-weight:bold;font-size:14px");
 
 const authScreen = byId("authScreen");
 const appScreen = byId("appScreen");
@@ -147,6 +147,8 @@ categoryFilterSelect?.addEventListener("change", () => {
   renderSubmissionRows();
 });
 byId("modelPageSaveCategoryButton")?.addEventListener("click", saveModelPageCategory);
+byId("modelPageSavePricingButton")?.addEventListener("click", saveModelPagePricing);
+byId("modelPageSaveCtaButton")?.addEventListener("click", saveModelPageCta);
 partnerSelectForSubscribers?.addEventListener("change", syncPartnerSubscribersSelection);
 byId("cardTotalUploads")?.addEventListener("click", () => { setActiveScreen("uploads"); setSubmissionFilter("all"); });
 byId("cardApprovedUploads")?.addEventListener("click", () => { setActiveScreen("uploads"); setSubmissionFilter("approved"); });
@@ -1190,6 +1192,11 @@ async function ensurePublishedModel(submissionId, item) {
     businessName: item.businessName || existingModel.businessName || "",
     category: item.category || existingModel.category || null,
     categoryName: item.categoryName || existingModel.categoryName || null,
+    brandValue: item.brandValue || existingModel.brandValue || null,
+    price: item.price || existingModel.price || null,
+    dealType: item.dealType || existingModel.dealType || "none",
+    ctaType: item.ctaType || existingModel.ctaType || "none",
+    ctaLink: item.ctaLink || existingModel.ctaLink || null,
     // Newest-first ordering in the apps; keep the original date on re-push
     createdAt: existingModel.createdAt || Date.now(),
     data: {
@@ -1940,6 +1947,88 @@ async function saveModelPageCategory() {
   }
 }
 
+function readDealType() {
+  const checked = document.querySelector('input[name="modelPageDealType"]:checked');
+  return checked ? checked.value : "none";
+}
+
+function renderModelPagePricingAndCta(item) {
+  const brandInput = byId("modelPageBrandValueInput");
+  const priceInput = byId("modelPagePriceInput");
+  const ctaTypeSelect = byId("modelPageCtaTypeSelect");
+  const ctaLinkInput = byId("modelPageCtaLinkInput");
+  if (brandInput) brandInput.value = item.brandValue || "";
+  if (priceInput) priceInput.value = item.price || "";
+  const dealType = item.dealType || "none";
+  document.querySelectorAll('input[name="modelPageDealType"]').forEach((r) => { r.checked = r.value === dealType; });
+  if (ctaTypeSelect) ctaTypeSelect.value = item.ctaType || "none";
+  if (ctaLinkInput) ctaLinkInput.value = item.ctaLink || "";
+  const pricingMsg = byId("modelPagePricingMessage");
+  const ctaMsg = byId("modelPageCtaMessage");
+  if (pricingMsg) pricingMsg.textContent = "";
+  if (ctaMsg) ctaMsg.textContent = "";
+}
+
+/** Pricing/CTA only ever write to the submission, same as Description - they
+ * surface on the live app after the next Approve/Push, not instantly. That
+ * matches how every other partner-editable field already behaves here, and
+ * (unlike Category, which is admin-only) avoids a rules change: partners have
+ * no write access to the published cornucopia/models/{modelKey} record. */
+async function saveModelPagePricing() {
+  const item = _modelPageItem;
+  if (!item?.id) return;
+  const msg = byId("modelPagePricingMessage");
+  const brandValue = (byId("modelPageBrandValueInput")?.value || "").trim();
+  const price = (byId("modelPagePriceInput")?.value || "").trim();
+  const dealType = readDealType();
+
+  if (msg) msg.textContent = "Saving...";
+  try {
+    await update(dbRef(db, `${ROOT}/submissions/${item.id}`), {
+      brandValue: brandValue || null,
+      price: price || null,
+      dealType
+    });
+    const cached = submissionsCache.find((s) => s.id === item.id);
+    if (cached) { cached.brandValue = brandValue || null; cached.price = price || null; cached.dealType = dealType; }
+    if (msg) msg.textContent = "Saved. Push to App to update the live listing.";
+  } catch (err) {
+    if (msg) msg.textContent = `Could not save: ${err.message || err}`;
+  }
+}
+
+async function saveModelPageCta() {
+  const item = _modelPageItem;
+  if (!item?.id) return;
+  const msg = byId("modelPageCtaMessage");
+  const ctaType = byId("modelPageCtaTypeSelect")?.value || "none";
+  const ctaLink = (byId("modelPageCtaLinkInput")?.value || "").trim();
+
+  if (ctaType !== "none") {
+    if (!ctaLink) {
+      if (msg) msg.textContent = "Enter a link for this call to action.";
+      return;
+    }
+    if (!/^https?:\/\/.+/i.test(ctaLink)) {
+      if (msg) msg.textContent = "Link must start with http:// or https://";
+      return;
+    }
+  }
+
+  if (msg) msg.textContent = "Saving...";
+  try {
+    await update(dbRef(db, `${ROOT}/submissions/${item.id}`), {
+      ctaType,
+      ctaLink: ctaType === "none" ? null : ctaLink
+    });
+    const cached = submissionsCache.find((s) => s.id === item.id);
+    if (cached) { cached.ctaType = ctaType; cached.ctaLink = ctaType === "none" ? null : ctaLink; }
+    if (msg) msg.textContent = "Saved. Push to App to update the live listing.";
+  } catch (err) {
+    if (msg) msg.textContent = `Could not save: ${err.message || err}`;
+  }
+}
+
 async function loadPartnerDeliveryData() {
   if (!currentProfile || (currentProfile.role || "").toLowerCase() === "admin") return;
   if (partnerDeliveryMessage) partnerDeliveryMessage.textContent = "";
@@ -2515,6 +2604,7 @@ async function openModelPage(item) {
 
     renderModelPageActions(item);
     renderModelPageCategory(item);
+    renderModelPagePricingAndCta(item);
 
     byId("modelPageLoading")?.classList.add("hidden");
     byId("modelPageContent")?.classList.remove("hidden");
