@@ -23,7 +23,24 @@
         ".read": "auth != null",
         "$partnerUid": {
           ".read": "auth != null && (auth.uid === $partnerUid || root.child('cornucopia/users').child(auth.uid).child('role').val() === 'admin')",
-          ".write": "auth != null && root.child('cornucopia/users').child(auth.uid).child('role').val() === 'admin'"
+          ".write": "auth != null && root.child('cornucopia/users').child(auth.uid).child('role').val() === 'admin'",
+
+          "mailingList": {
+            ".read": "auth != null && (auth.uid === $partnerUid || root.child('cornucopia/users').child(auth.uid).child('role').val() === 'admin')",
+            ".write": "auth != null && (auth.uid === $partnerUid || root.child('cornucopia/users').child(auth.uid).child('role').val() === 'admin')",
+            "$entryId": {
+              ".write": "auth != null && (auth.uid === $partnerUid || root.child('cornucopia/users').child(auth.uid).child('role').val() === 'admin')",
+
+              "status": {
+                ".write": true,
+                ".validate": "newData.val() === 'pending' || newData.val() === 'opted_in' || newData.val() === 'declined'"
+              },
+              "respondedAt": {
+                ".write": true,
+                ".validate": "newData.isNumber()"
+              }
+            }
+          }
         }
       },
 

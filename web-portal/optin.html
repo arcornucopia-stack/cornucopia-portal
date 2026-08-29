@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Confirm your subscription — Cornucopia</title>
+  <link rel="icon" href="data:,">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css?v=7" />
+  <style>
+    body { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+    .optin-card { max-width: 440px; width: 100%; padding: 32px; text-align: center; }
+    .optin-icon { font-size: 40px; margin-bottom: 8px; }
+    .optin-actions { display: flex; gap: 12px; margin-top: 20px; }
+    .optin-actions button { flex: 1; }
+    #declineButton { background: #fff; color: var(--ink); border: 1px solid var(--line); }
+  </style>
+</head>
+<body>
+  <div class="panel optin-card">
+    <div class="optin-icon">✉️</div>
+    <h1 id="optinTitle" style="margin:0 0 8px">Hear from <span id="partnerNameSpan">a Cornucopia partner</span>?</h1>
+    <p class="muted">Opt in to receive updates about their new collectibles, or decline if you'd rather not hear from them. Either way, this is the only email you'll get unless you opt in.</p>
+    <div class="optin-actions">
+      <button id="optInButton" type="button">Opt In</button>
+      <button id="declineButton" type="button">Decline</button>
+    </div>
+    <p id="optinMessage" class="muted" style="margin-top:16px"></p>
+  </div>
+
+  <script src="./firebase-config.js?v=8"></script>
+  <script type="module" src="./optin.js?v=1"></script>
+</body>
+</html>

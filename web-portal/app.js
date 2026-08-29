@@ -34,9 +34,16 @@ const auth = getAuth(app);
 const db = getDatabase(app);
 const storage = getStorage(app);
 
+const emailjsConfig = window.CORNUCOPIA_EMAILJS_CONFIG;
+const emailjsReady = !!(emailjsConfig?.publicKey && !emailjsConfig.publicKey.startsWith("YOUR_") && window.emailjs);
+if (emailjsReady) {
+  try { window.emailjs.init({ publicKey: emailjsConfig.publicKey }); }
+  catch (err) { console.warn("[Cornucopia] EmailJS init failed:", err); }
+}
+
 // ── Version stamp – if you don't see this line in the Console after page load,
 //    the browser is still serving old cached code. Hard-reload with Ctrl+Shift+R.
-console.log("%c[Cornucopia] app.js v8 loaded ✓", "color:green;font-weight:bold;font-size:14px");
+console.log("%c[Cornucopia] app.js v10 loaded ✓", "color:green;font-weight:bold;font-size:14px");
 
 const authScreen = byId("authScreen");
 const appScreen = byId("appScreen");
@@ -62,7 +69,7 @@ const uploadSectionTitle = byId("uploadSectionTitle");
 const mySubmissionsTitle = byId("mySubmissionsTitle");
 
 const mySubmissionsBody = byId("mySubmissionsBody");
-const pendingBody = byId("pendingBody");
+const uploadsNavButton = byId("uploadsNavButton");
 const publishedModelsBody = byId("publishedModelsBody");
 const dispatchModelSelect = byId("dispatchModelSelect");
 const dispatchUsersList = byId("dispatchUsersList");
@@ -79,6 +86,13 @@ const availableUsersForPartnerList = byId("availableUsersForPartnerList");
 const refreshPartnerSubscribersButton = byId("refreshPartnerSubscribersButton");
 const savePartnerSubscribersButton = byId("savePartnerSubscribersButton");
 const partnerSubscribersMessage = byId("partnerSubscribersMessage");
+const mailingListCsvInput = byId("mailingListCsvInput");
+const mailingListUploadButton = byId("mailingListUploadButton");
+const mailingListUploadMessage = byId("mailingListUploadMessage");
+const mailingListCountText = byId("mailingListCountText");
+const mailingListBody = byId("mailingListBody");
+const MAILING_LIST_CAP = 1000;
+let mailingListCache = {};
 
 const totalUploads = byId("totalUploads");
 const approvedUploads = byId("approvedUploads");
@@ -118,6 +132,7 @@ refreshPartnerDeliveryButton?.addEventListener("click", loadPartnerDeliveryData)
 sendPartnerModelButton?.addEventListener("click", sendApprovedPartnerModelToUsers);
 refreshPartnerSubscribersButton?.addEventListener("click", loadPartnerSubscriptionAdminData);
 savePartnerSubscribersButton?.addEventListener("click", savePartnerSubscribersMapping);
+mailingListUploadButton?.addEventListener("click", handleMailingListUpload);
 partnerSelectForSubscribers?.addEventListener("change", syncPartnerSubscribersSelection);
 byId("cardTotalUploads")?.addEventListener("click", () => { setActiveScreen("uploads"); setSubmissionFilter("all"); });
 byId("cardApprovedUploads")?.addEventListener("click", () => { setActiveScreen("uploads"); setSubmissionFilter("approved"); });
@@ -325,19 +340,21 @@ function addSelectAll(listEl) {
 
 // ─── Portal Notification System ─────────────────────────────────────────────
 
-async function sendPortalNotification(toUid, message, type = "info", screen = "uploads") {
+async function sendPortalNotification(toUid, message, type = "info", screen = "uploads", filter = null) {
   const ref = push(dbRef(db, `${ROOT}/portal_notifications/${toUid}`));
-  await set(ref, { message, type, screen, createdAt: Date.now(), read: false });
+  const payload = { message, type, screen, createdAt: Date.now(), read: false };
+  if (filter) payload.filter = filter;
+  await set(ref, payload);
 }
 
-async function notifyAllAdmins(message, type = "info", screen = "uploads") {
+async function notifyAllAdmins(message, type = "info", screen = "uploads", filter = null) {
   try {
     const usersSnap = await get(dbRef(db, `${ROOT}/users`));
     if (!usersSnap.exists()) return;
     const promises = [];
     usersSnap.forEach(child => {
       const role = String(child.val()?.role || "").toLowerCase();
-      if (role === "admin") promises.push(sendPortalNotification(child.key, message, type, screen));
+      if (role === "admin") promises.push(sendPortalNotification(child.key, message, type, screen, filter));
     });
     await Promise.all(promises);
   } catch (err) { console.warn("Could not notify admins:", err); }
@@ -433,7 +450,7 @@ async function loadPortalNotifications() {
         _notifDropdownOpen = false;
         byId("notifDropdown")?.classList.add("hidden");
         setActiveScreen(targetScreen);
-        if (targetScreen === "uploads") setSubmissionFilter("all");
+        if (targetScreen === "uploads") setSubmissionFilter(n.filter || "all");
       });
 
       list.appendChild(div);
@@ -680,6 +697,10 @@ onAuthStateChanged(auth, async (user) => {
     th.style.display = isAdmin ? "table-cell" : "none";
   });
 
+  const uploadsLabel = isAdmin ? "Manage Uploads" : "My Uploads";
+  if (uploadsNavButton) uploadsNavButton.textContent = uploadsLabel;
+  const backToUploadsBtn = byId("backToUploads");
+  if (backToUploadsBtn) backToUploadsBtn.textContent = `← ${uploadsLabel}`;
   setAdminVisibility(isAdmin);
   setUploadUIForRole(isAdmin);
   setSubmissionFilter("all");
@@ -690,14 +711,14 @@ onAuthStateChanged(auth, async (user) => {
 async function refreshAll() {
   await Promise.allSettled([
     loadMySubmissions(),
-    loadApprovalQueue(),
     loadAnalytics(),
     loadPublishedModels(),
     loadDispatchData(),
     loadPartnerSubscriptionAdminData(),
     loadPartnerSubscribersForUpload(),
     loadPartnerDeliveryData(),
-    loadPortalNotifications()
+    loadPortalNotifications(),
+    loadMailingList()
   ]);
 }
 
@@ -953,7 +974,7 @@ async function uploadModel() {
         // Notify admins of new upload (partners only)
         if (!isAdminUpload) {
           const partnerName = currentProfile.businessName || currentProfile.name || businessId;
-          notifyAllAdmins(`📦 ${partnerName} submitted a new model for review.`, "info");
+          notifyAllAdmins(`📦 ${partnerName} submitted a new model for review.`, "info", "uploads", "pending");
         }
       } catch (err) {
         uploadMessage.textContent = `Upload completed but publish step failed: ${err.message || err}`;
@@ -991,112 +1012,92 @@ async function loadMySubmissions() {
   }
 }
 
-async function loadApprovalQueue() {
-  pendingBody.innerHTML = "";
-  if (!currentProfile || normalizeRole(currentProfile.role) !== "admin") return;
+/**
+ * Approve/Reject/Push to App now show up in two places (the merged Manage
+ * Uploads table and the model detail page, per R-2.5) — both wire buttons
+ * with data-id/data-action and call this shared handler rather than each
+ * having their own copy of the confirm/loading/notify/refresh flow.
+ */
+function bindSubmissionActionButtons(container) {
+  container.querySelectorAll("button[data-id][data-action]").forEach((btn) => {
+    btn.onclick = () => runSubmissionAction(btn);
+  });
+}
+
+async function runSubmissionAction(btn) {
+  const id = btn.getAttribute("data-id");
+  const action = btn.getAttribute("data-action");
+
+  const confirmMessages = {
+    approve: "Approve this submission and make it ready to push?",
+    reject: "Reject this submission? This cannot be undone.",
+    push: "Push this model to the app for users to see?"
+  };
+  const loadingLabels = { approve: "Approving…", reject: "Rejecting…", push: "Pushing to app…" };
+  const successMessages = {
+    approve: "✓ Submission approved.",
+    reject: "✓ Submission rejected.",
+    push: "🚀 Model pushed to the app!"
+  };
+
+  if (!confirm(confirmMessages[action])) return;
+
+  const originalText = btn.textContent.trim();
+  btn.textContent = loadingLabels[action];
+  btn.disabled = true;
+  const allBtns = btn.closest(".row-actions")?.querySelectorAll("button");
+  allBtns?.forEach((b) => { b.disabled = true; });
+
   try {
-    const all = await getAllSubmissions();
-    all.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-
-    all.forEach((item) => {
-      const approved = item.status === "approved";
-      const rejected = item.status === "rejected";
-      const pushed = !!item.pushedToApp;
-
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${escapeHtml(item.businessName || item.businessId || "-")}</td>
-        <td>${escapeHtml(item.displayName || item.fileName || "-")}</td>
-        <td>${escapeHtml(targetLabel(item))}</td>
-        <td><span class="status-pill status-${item.status || "pending"}">${escapeHtml(statusLabel(item))}</span></td>
-        <td>${formatTs(item.createdAt)}</td>
-        <td>
-          <div class="row-actions">
-            <button class="secondary" data-id="${item.id}" data-action="approve"
-              ${approved || rejected ? "disabled" : ""}>Approve</button>
-            <button class="danger" data-id="${item.id}" data-action="reject"
-              ${approved || rejected ? "disabled" : ""}>Reject</button>
-            <button class="success" data-id="${item.id}" data-action="push"
-              ${!approved || pushed ? "disabled" : ""}>
-              ${pushed ? "Pushed ✓" : "Push to App"}
-            </button>
-          </div>
-        </td>
-      `;
-      pendingBody.appendChild(tr);
-    });
-
-    pendingBody.querySelectorAll("button[data-id]").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        const id = btn.getAttribute("data-id");
-        const action = btn.getAttribute("data-action");
-
-        const confirmMessages = {
-          approve: "Approve this submission and make it ready to push?",
-          reject: "Reject this submission? This cannot be undone.",
-          push: "Push this model to the app for users to see?"
+    if (action === "approve") {
+      await updateSubmissionStatus(id, "approved");
+    } else if (action === "reject") {
+      await updateSubmissionStatus(id, "rejected");
+    } else if (action === "push") {
+      await pushSubmissionToApp(id);
+    }
+    // Notify the partner who submitted
+    try {
+      const subSnap = await get(dbRef(db, `${ROOT}/submissions/${id}`));
+      if (subSnap.exists()) {
+        const sub = subSnap.val();
+        const partnerUid = sub.uploaderUid;
+        const modelName = sub.displayName || sub.fileName || "your model";
+        const partnerMessages = {
+          approve: `✅ "${modelName}" has been approved!`,
+          reject: `❌ "${modelName}" was not approved this time.`,
+          push: `🚀 "${modelName}" is now live in the app!`
         };
-        const loadingLabels = { approve: "Approving…", reject: "Rejecting…", push: "Pushing to app…" };
-        const successMessages = {
-          approve: "✓ Submission approved.",
-          reject: "✓ Submission rejected.",
-          push: "🚀 Model pushed to the app!"
-        };
-
-        if (!confirm(confirmMessages[action])) return;
-
-        const originalText = btn.textContent.trim();
-        btn.textContent = loadingLabels[action];
-        btn.disabled = true;
-        const allBtns = btn.closest(".row-actions")?.querySelectorAll("button");
-        allBtns?.forEach((b) => { b.disabled = true; });
-
-        try {
-          if (action === "approve") {
-            await updateSubmissionStatus(id, "approved");
-          } else if (action === "reject") {
-            await updateSubmissionStatus(id, "rejected");
-          } else if (action === "push") {
-            await pushSubmissionToApp(id);
-          }
-          // Notify the partner who submitted
-          try {
-            const subSnap = await get(dbRef(db, `${ROOT}/submissions/${id}`));
-            if (subSnap.exists()) {
-              const sub = subSnap.val();
-              const partnerUid = sub.uploaderUid;
-              const modelName = sub.displayName || sub.fileName || "your model";
-              const partnerMessages = {
-                approve: `✅ "${modelName}" has been approved!`,
-                reject: `❌ "${modelName}" was not approved this time.`,
-                push: `🚀 "${modelName}" is now live in the app!`
-              };
-              if (partnerUid && partnerMessages[action]) {
-                await sendPortalNotification(partnerUid, partnerMessages[action],
-                  action === "reject" ? "error" : "success");
-              }
-            }
-          } catch (e) { console.warn("Could not notify partner:", e); }
-
-          // Flash row before refresh
-          const row = btn.closest("tr");
-          const flashClass = { approve: "row-flash-approved", reject: "row-flash-rejected", push: "row-flash-pushed" }[action];
-          if (row && flashClass) {
-            row.classList.add(flashClass);
-            await new Promise((res) => setTimeout(res, action === "push" ? 1800 : 1400));
-            row.classList.remove(flashClass);
-          }
-          showToast(successMessages[action]);
-          await refreshAll();
-        } catch (err) {
-          showToast(`Action failed: ${err.message || err}`, "error");
-          btn.textContent = originalText;
-          allBtns?.forEach((b) => { b.disabled = false; });
+        if (partnerUid && partnerMessages[action]) {
+          await sendPortalNotification(partnerUid, partnerMessages[action],
+            action === "reject" ? "error" : "success");
         }
-      });
-    });
+      }
+    } catch (e) { console.warn("Could not notify partner:", e); }
+
+    // Flash row before refresh — only applies when the button lives in a
+    // table row; the model-page action card has no <tr> ancestor and just
+    // skips straight to the refresh below.
+    const row = btn.closest("tr");
+    const flashClass = { approve: "row-flash-approved", reject: "row-flash-rejected", push: "row-flash-pushed" }[action];
+    if (row && flashClass) {
+      row.classList.add(flashClass);
+      await new Promise((res) => setTimeout(res, action === "push" ? 1800 : 1400));
+      row.classList.remove(flashClass);
+    }
+    showToast(successMessages[action]);
+    await refreshAll();
+
+    // If the model detail page is open on this exact submission, refresh it
+    // in place so its status pill / stats / action-button states catch up.
+    if (_modelPageItem?.id === id) {
+      const updated = submissionsCache.find((s) => s.id === id);
+      if (updated) await openModelPage(updated);
+    }
   } catch (err) {
-    uploadMessage.textContent = `Could not load approval queue: ${err.message || err}`;
+    showToast(`Action failed: ${err.message || err}`, "error");
+    btn.textContent = originalText;
+    allBtns?.forEach((b) => { b.disabled = false; });
   }
 }
 
@@ -1539,6 +1540,230 @@ async function savePartnerSubscribersMapping() {
   }
 }
 
+// ─── Partner mailing list (Epic 1) ──────────────────────────────────────────
+
+/** Minimal CSV splitter — handles quoted fields containing commas ("a, b"). */
+function splitCsvLine(line) {
+  const cells = [];
+  let cur = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') { cur += '"'; i++; }
+        else inQuotes = false;
+      } else {
+        cur += ch;
+      }
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === ",") {
+      cells.push(cur);
+      cur = "";
+    } else {
+      cur += ch;
+    }
+  }
+  cells.push(cur);
+  return cells.map((c) => c.trim());
+}
+
+/**
+ * Requires a header row with an "email" column (a "name" column is optional)
+ * rather than trying to guess a headerless layout — keeps the contract simple
+ * and matches how Mailchimp/Google Contacts/Excel exports are shaped.
+ */
+function parseMailingListCsv(text) {
+  const lines = text.split(/\r\n|\r|\n/).filter((l) => l.trim().length > 0);
+  if (!lines.length) return { entries: [], invalidRows: 0, error: "The file is empty." };
+
+  const header = splitCsvLine(lines[0]).map((h) => h.toLowerCase());
+  const emailIdx = header.indexOf("email");
+  if (emailIdx === -1) {
+    return {
+      entries: [],
+      invalidRows: 0,
+      error: 'CSV must have a header row with an "email" column (an optional "name" column is also supported).'
+    };
+  }
+  const nameIdx = header.indexOf("name");
+
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const entries = [];
+  let invalidRows = 0;
+  lines.slice(1).forEach((line) => {
+    const cells = splitCsvLine(line);
+    const email = (cells[emailIdx] || "").trim().toLowerCase();
+    const name = nameIdx >= 0 ? (cells[nameIdx] || "").trim() : "";
+    if (EMAIL_RE.test(email)) entries.push({ email, name });
+    else if (cells.some((c) => c.trim().length)) invalidRows++;
+  });
+  return { entries, invalidRows, error: null };
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Consent gate (spam protocol): a new contact starts "pending" and only
+ * counts as marketable once they click Opt In on optin.html. The link embeds
+ * partner name/uid directly so that page never needs read access to the
+ * mailing list — see database.rules.json for the matching write rule.
+ */
+async function sendMailingListWelcomeEmail(entry, entryId, partnerName) {
+  if (!emailjsReady) {
+    return { sent: false, reason: "EmailJS is not configured yet (see web-portal/README.md)." };
+  }
+  const base = location.href.replace(/[^/]*$/, "");
+  const link = `${base}optin.html?p=${encodeURIComponent(currentUser.uid)}&e=${encodeURIComponent(entryId)}&n=${encodeURIComponent(partnerName)}`;
+  try {
+    await window.emailjs.send(emailjsConfig.serviceId, emailjsConfig.templateId, {
+      to_email: entry.email,
+      to_name: entry.name || entry.email,
+      partner_name: partnerName,
+      optin_link: link
+    });
+    return { sent: true };
+  } catch (err) {
+    return { sent: false, reason: err?.text || err?.message || String(err) };
+  }
+}
+
+async function loadMailingList() {
+  if (!currentUser || normalizeRole(currentProfile?.role) !== "partner") return;
+  if (!mailingListBody) return;
+
+  try {
+    const snap = await get(dbRef(db, `${ROOT}/partners/${currentUser.uid}/mailingList`));
+    mailingListCache = snap.exists() ? snap.val() : {};
+    renderMailingListRows();
+    updateMailingListCount();
+  } catch (err) {
+    if (mailingListUploadMessage) mailingListUploadMessage.textContent = `Could not load mailing list: ${err.message || err}`;
+  }
+}
+
+function updateMailingListCount() {
+  if (!mailingListCountText) return;
+  const count = Object.keys(mailingListCache).length;
+  mailingListCountText.textContent = `${count.toLocaleString()} / ${MAILING_LIST_CAP.toLocaleString()} contacts used`;
+}
+
+function renderMailingListRows() {
+  if (!mailingListBody) return;
+  mailingListBody.innerHTML = "";
+
+  const rows = Object.entries(mailingListCache).sort((a, b) => (b[1].uploadedAt || 0) - (a[1].uploadedAt || 0));
+  rows.forEach(([, entry]) => {
+    const status = entry.status || "pending";
+    const pillClass = status === "opted_in" ? "status-approved" : status === "declined" ? "status-rejected" : "status-pending";
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${escapeHtml(entry.email || "")}</td>
+      <td>${escapeHtml(entry.name || "-")}</td>
+      <td><span class="status-pill ${pillClass}">${escapeHtml(status.replace("_", " "))}</span></td>
+      <td>${formatTs(entry.uploadedAt)}</td>
+    `;
+    mailingListBody.appendChild(tr);
+  });
+
+  if (!rows.length) {
+    mailingListBody.innerHTML = "<tr><td colspan=\"4\" class=\"muted\">No contacts uploaded yet.</td></tr>";
+  }
+}
+
+async function handleMailingListUpload() {
+  if (!currentUser || normalizeRole(currentProfile?.role) !== "partner") return;
+  const file = mailingListCsvInput?.files?.[0];
+  if (!file) {
+    mailingListUploadMessage.textContent = "Choose a CSV file first.";
+    return;
+  }
+
+  mailingListUploadButton.disabled = true;
+  mailingListUploadMessage.textContent = "Reading file...";
+
+  try {
+    const text = await file.text();
+    const { entries, invalidRows, error } = parseMailingListCsv(text);
+    if (error) {
+      mailingListUploadMessage.textContent = error;
+      return;
+    }
+    if (!entries.length) {
+      mailingListUploadMessage.textContent = "No valid email addresses found in that file.";
+      return;
+    }
+
+    const existingEmails = new Set(Object.values(mailingListCache).map((e) => (e.email || "").toLowerCase()));
+    const seenInFile = new Set();
+    const newEntries = [];
+    entries.forEach((entry) => {
+      if (existingEmails.has(entry.email) || seenInFile.has(entry.email)) return;
+      seenInFile.add(entry.email);
+      newEntries.push(entry);
+    });
+    const duplicateCount = entries.length - newEntries.length;
+
+    // Gate (R-1.4): reject the whole upload rather than partially applying it,
+    // so a partner never ends up with a silently truncated list.
+    const existingCount = Object.keys(mailingListCache).length;
+    if (existingCount >= MAILING_LIST_CAP) {
+      mailingListUploadMessage.textContent = `You've reached the ${MAILING_LIST_CAP.toLocaleString()}-contact free limit. Contact us to upgrade before uploading more.`;
+      return;
+    }
+    if (existingCount + newEntries.length > MAILING_LIST_CAP) {
+      const remaining = MAILING_LIST_CAP - existingCount;
+      mailingListUploadMessage.textContent = `That file has ${newEntries.length} new contact(s), but you only have ${remaining} slot(s) left on the free plan (${MAILING_LIST_CAP.toLocaleString()} cap). Trim the file or contact us to upgrade.`;
+      return;
+    }
+    if (!newEntries.length) {
+      mailingListUploadMessage.textContent = `No new contacts to add (${duplicateCount} already on your list).`;
+      return;
+    }
+
+    mailingListUploadMessage.textContent = `Saving ${newEntries.length} contact(s)...`;
+    const partnerName = currentProfile.businessName || currentProfile.name || "Cornucopia";
+    const listRef = dbRef(db, `${ROOT}/partners/${currentUser.uid}/mailingList`);
+    const updates = {};
+    const toEmail = [];
+    newEntries.forEach((entry) => {
+      const entryId = push(listRef).key;
+      const record = { email: entry.email, name: entry.name || "", status: "pending", uploadedAt: Date.now() };
+      updates[entryId] = record;
+      toEmail.push({ id: entryId, ...record });
+    });
+    await update(listRef, updates);
+    mailingListCache = { ...mailingListCache, ...updates };
+    renderMailingListRows();
+    updateMailingListCount();
+
+    mailingListUploadMessage.textContent = `Saved ${newEntries.length} contact(s). Sending welcome emails...`;
+    let sentCount = 0;
+    let firstEmailError = null;
+    for (const entry of toEmail) {
+      const result = await sendMailingListWelcomeEmail(entry, entry.id, partnerName);
+      if (result.sent) sentCount++;
+      else if (!firstEmailError) firstEmailError = result.reason;
+      await sleep(300); // keep well under EmailJS's per-second rate limit
+    }
+
+    const dupText = duplicateCount ? ` (${duplicateCount} duplicate${duplicateCount === 1 ? "" : "s"} skipped)` : "";
+    const invalidText = invalidRows ? ` ${invalidRows} row(s) had no valid email and were ignored.` : "";
+    mailingListUploadMessage.textContent = sentCount === toEmail.length
+      ? `Added ${newEntries.length} contact(s)${dupText} and sent ${sentCount} welcome email(s).${invalidText}`
+      : `Added ${newEntries.length} contact(s)${dupText}, but only ${sentCount}/${toEmail.length} welcome emails sent. ${firstEmailError || ""}${invalidText}`;
+
+    mailingListCsvInput.value = "";
+  } catch (err) {
+    mailingListUploadMessage.textContent = `Upload failed: ${err.message || err}`;
+  } finally {
+    mailingListUploadButton.disabled = false;
+  }
+}
+
 async function loadPartnerDeliveryData() {
   if (!currentProfile || (currentProfile.role || "").toLowerCase() === "admin") return;
   if (partnerDeliveryMessage) partnerDeliveryMessage.textContent = "";
@@ -1973,6 +2198,10 @@ function renderSubmissionRows() {
       ? `<img src="${escapeHtml(item.thumbnailUrl)}" class="row-thumbnail" alt="thumbnail">`
       : `<div class="row-thumbnail-placeholder"></div>`;
 
+    const approved = item.status === "approved";
+    const rejected = item.status === "rejected";
+    const pushed = !!item.pushedToApp;
+
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>
@@ -1988,6 +2217,7 @@ function renderSubmissionRows() {
         </div>
       </td>
       ${isAdmin ? `<td>${escapeHtml(item.businessName || item.businessId || "-")}</td>` : ""}
+      ${isAdmin ? `<td>${escapeHtml(targetLabel(item))}</td>` : ""}
       <td><span class="status-pill status-${item.status || "pending"}">${escapeHtml(statusLabel(item))}</span></td>
       <td>
         <div class="q-cell">
@@ -1996,12 +2226,22 @@ function renderSubmissionRows() {
         </div>
       </td>
       <td>${formatTs(item.createdAt)}</td>
+      ${isAdmin ? `
+      <td>
+        <div class="row-actions">
+          <button class="secondary" data-id="${item.id}" data-action="approve" ${approved || rejected ? "disabled" : ""}>Approve</button>
+          <button class="danger" data-id="${item.id}" data-action="reject" ${approved || rejected ? "disabled" : ""}>Reject</button>
+          <button class="success" data-id="${item.id}" data-action="push" ${!approved || pushed ? "disabled" : ""}>${pushed ? "Pushed ✓" : "Push to App"}</button>
+        </div>
+      </td>` : ""}
     `;
     tr.querySelector(".manage-questions-btn").addEventListener("click", () => openModelPage(item));
     tr.querySelector("[data-analytics]").addEventListener("click", () => openModelPage(item));
     tr.querySelector(".model-details-btn").addEventListener("click", () => openModelDetailsEditor(item));
     mySubmissionsBody.appendChild(tr);
   });
+
+  if (isAdmin) bindSubmissionActionButtons(mySubmissionsBody);
 }
 
 // ─── Model Page (full-screen detail view) ────────────────────────────────────
@@ -2090,12 +2330,42 @@ async function openModelPage(item) {
     // Show thumbnail or placeholder
     renderModelPageThumbnail(item.thumbnailUrl || null);
 
+    renderModelPageActions(item);
+
     byId("modelPageLoading")?.classList.add("hidden");
     byId("modelPageContent")?.classList.remove("hidden");
   } catch (err) {
     const el = byId("modelPageLoading");
     if (el) el.textContent = `Could not load: ${err.message || err}`;
   }
+}
+
+/** Approve/Reject/Push to App, directly on the model detail page (R-2.5) —
+ * mirrors the same three buttons in the Manage Uploads table, sharing the
+ * exact same handler (runSubmissionAction) so both stay in sync. */
+function renderModelPageActions(item) {
+  if (normalizeRole(currentProfile?.role) !== "admin") return;
+  const card = byId("modelPageActionsCard");
+  const approveBtn = byId("modelPageApproveButton");
+  const rejectBtn = byId("modelPageRejectButton");
+  const pushBtn = byId("modelPagePushButton");
+  if (!card || !approveBtn || !rejectBtn || !pushBtn) return;
+
+  const approved = item.status === "approved";
+  const rejected = item.status === "rejected";
+  const pushed = !!item.pushedToApp;
+
+  [approveBtn, rejectBtn, pushBtn].forEach((btn) => { btn.dataset.id = item.id; });
+  approveBtn.dataset.action = "approve";
+  rejectBtn.dataset.action = "reject";
+  pushBtn.dataset.action = "push";
+
+  approveBtn.disabled = approved || rejected;
+  rejectBtn.disabled = approved || rejected;
+  pushBtn.disabled = !approved || pushed;
+  pushBtn.textContent = pushed ? "Pushed ✓" : "Push to App";
+
+  bindSubmissionActionButtons(card);
 }
 
 /** Renders the free-form key/value attributes set via the "Details" modal
