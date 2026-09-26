@@ -29,6 +29,7 @@
       <button class="nav-btn active" data-screen="dashboard">Dashboard</button>
       <button class="nav-btn" id="uploadsNavButton" data-screen="uploads">My Uploads</button>
       <button class="nav-btn partner-only" data-screen="mailingList">Mailing List</button>
+      <button class="nav-btn partner-only" data-screen="report">Report</button>
       <button class="nav-btn admin-only" data-screen="managePartner">Manage Partner</button>
       <button class="nav-btn" id="logoutButton">Sign out</button>
     </aside>
@@ -78,16 +79,42 @@
               <p id="approvedUploads">0</p>
               <span class="metric-hint">Show approved only</span>
             </button>
-            <button class="card metric-card partner-metric" id="cardOpenCount" type="button">
-              <h3>Opens</h3>
-              <p id="openCount">0</p>
-              <span class="metric-hint">View my uploads</span>
+            <button class="card metric-card partner-metric" id="cardReport" type="button">
+              <h3>Report</h3>
+              <p>→</p>
+              <span class="metric-hint">Analytics &amp; sharing</span>
             </button>
-            <button class="card metric-card partner-metric" id="cardSaveCount" type="button">
-              <h3>Saves</h3>
-              <p id="saveCount">0</p>
-              <span class="metric-hint">View my uploads</span>
-            </button>
+          </div>
+        </section>
+
+        <section id="report" class="screen partner-only">
+          <h3 style="margin:0 0 4px">Your Report</h3>
+          <p class="muted" style="margin:0 0 16px">Engagement and sharing performance across all your products.</p>
+
+          <div class="mp-card">
+            <h3 class="mp-section-title">Engagement</h3>
+            <div class="mp-stats-row">
+              <div class="mp-stat"><span class="mp-stat-value" id="openCount">0</span><span class="mp-stat-label">Opens</span></div>
+              <div class="mp-stat"><span class="mp-stat-value" id="saveCount">0</span><span class="mp-stat-label">Saves</span></div>
+            </div>
+          </div>
+
+          <div class="mp-card" id="reportShareReportCard" style="margin-top:16px">
+            <h3 class="mp-section-title">Sharing Activity</h3>
+            <p class="muted" id="reportShareEmpty">No shares recorded yet.</p>
+            <div id="reportShareBody" class="hidden">
+              <div id="reportShareStatsRow" class="mp-stats-row"></div>
+
+              <h4 class="mp-section-title" style="margin-top:20px">Shares Over Time</h4>
+              <div class="report-chart-wrap report-chart-wrap-sm">
+                <canvas id="reportShareTimelineChart"></canvas>
+              </div>
+
+              <h4 class="mp-section-title" style="margin-top:20px">Shares per User</h4>
+              <div class="report-chart-wrap report-chart-wrap-sm">
+                <canvas id="reportShareHistogramChart"></canvas>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -158,6 +185,26 @@
             </div>
             <p id="partnerSubscribersMessage" class="muted"></p>
           </div>
+
+          <div class="mp-card" id="partnerShareReportCard" style="margin-top:20px">
+            <h3 class="mp-section-title">Sharing Activity</h3>
+            <p class="muted" id="partnerShareReportEmpty">Select a partner above to see their sharing activity.</p>
+            <div id="partnerShareReportBody" class="hidden">
+              <div id="partnerShareStatsRow" class="mp-stats-row"></div>
+
+              <h4 class="mp-section-title" style="margin-top:20px">Shares Over Time</h4>
+              <div class="report-chart-wrap report-chart-wrap-sm">
+                <canvas id="partnerShareTimelineChart"></canvas>
+              </div>
+
+              <h4 class="mp-section-title" style="margin-top:20px">Shares per User (click a bar to see who)</h4>
+              <p class="muted" style="margin:0 0 8px">Which bin of "how much a user shares" holds the most people — the primary growth vector to identify and encourage.</p>
+              <div class="report-chart-wrap report-chart-wrap-sm">
+                <canvas id="partnerShareHistogramChart"></canvas>
+              </div>
+              <div id="partnerShareBinUsers" class="histogram-bin-list hidden"></div>
+            </div>
+          </div>
         </section>
 
         <section id="mailingList" class="screen partner-only">
@@ -208,6 +255,24 @@
 
             <!-- Stats row (filled dynamically) -->
             <div id="modelPageStatsRow" class="mp-stats-row"></div>
+
+            <!-- Performance report: rating stats + engagement timeline -->
+            <div class="mp-card" id="modelPageReportCard">
+              <h3 class="mp-section-title">Performance Report</h3>
+
+              <div id="modelPageRatingStatsRow" class="mp-stats-row" style="margin-bottom:16px"></div>
+              <div id="modelPageRatingChartWrap" class="report-chart-wrap report-chart-wrap-sm">
+                <canvas id="modelPageRatingChart"></canvas>
+              </div>
+              <p id="modelPageRatingEmpty" class="muted hidden">No ratings yet.</p>
+
+              <h4 class="mp-section-title" style="margin-top:24px">Engagement Over Time</h4>
+              <p class="muted" style="margin:0 0 4px">Avg. time viewing this product: <strong id="modelPageAvgDwell">—</strong></p>
+              <div class="report-chart-wrap">
+                <canvas id="modelPageEngagementChart"></canvas>
+              </div>
+              <p id="modelPageEngagementEmpty" class="muted hidden">No activity recorded yet.</p>
+            </div>
 
             <!-- Two-column layout -->
             <div class="mp-columns">
@@ -488,84 +553,13 @@
     </div>
   </div>
 
-  <!-- Model Analytics Modal -->
-  <div id="analyticsModal" class="modal-overlay hidden">
-    <div class="modal-panel modal-large">
-      <div class="modal-header">
-        <div>
-          <h3 id="analyticsTitle">Model Analytics</h3>
-          <p id="analyticsMeta" class="muted" style="margin:2px 0 0"></p>
-        </div>
-        <button id="closeAnalytics" class="icon-btn" type="button">✕</button>
-      </div>
-      <div class="modal-body">
-        <div id="analyticsLoading" class="muted" style="text-align:center;padding:20px">Loading…</div>
-        <div id="analyticsContent" class="hidden">
-
-          <!-- Top stat cards -->
-          <div class="analytics-stats">
-            <div class="analytics-stat">
-              <span class="analytics-stat-value" id="statSent">—</span>
-              <span class="analytics-stat-label">Sent to</span>
-            </div>
-            <div class="analytics-stat">
-              <span class="analytics-stat-value" id="statOpens">—</span>
-              <span class="analytics-stat-label">Opens</span>
-            </div>
-            <div class="analytics-stat">
-              <span class="analytics-stat-value" id="statSaves">—</span>
-              <span class="analytics-stat-label">Saves</span>
-            </div>
-            <div class="analytics-stat">
-              <span class="analytics-stat-value" id="statResponseRate">—</span>
-              <span class="analytics-stat-label">Response rate</span>
-            </div>
-            <div class="analytics-stat">
-              <span class="analytics-stat-value" id="statConversionRate">—</span>
-              <span class="analytics-stat-label">Save rate</span>
-            </div>
-          </div>
-
-          <!-- Yes / No bar -->
-          <div class="analytics-section">
-            <h4 class="analytics-section-title">Overall Audience Response</h4>
-            <div class="vote-bar-row">
-              <span class="vote-label yes-label" id="statYesLabel">0 Yes</span>
-              <div class="vote-bar-track">
-                <div class="vote-bar-yes" id="voteBarYes"></div>
-                <div class="vote-bar-no" id="voteBarNo"></div>
-              </div>
-              <span class="vote-label no-label" id="statNoLabel">0 No</span>
-            </div>
-          </div>
-
-          <!-- Rating -->
-          <div class="analytics-section">
-            <h4 class="analytics-section-title">Rating</h4>
-            <div class="rating-display">
-              <span class="rating-value" id="statRating">—</span>
-              <span class="rating-stars" id="statStars"></span>
-              <span class="muted" style="font-size:13px"> / 5.0</span>
-            </div>
-          </div>
-
-          <!-- Question responses -->
-          <div class="analytics-section" id="questionAnalyticsSection" style="display:none">
-            <h4 class="analytics-section-title">Question Responses</h4>
-            <div id="questionAnalyticsList"></div>
-          </div>
-
-        </div>
-      </div>
-    </div>
-  </div>
-
   <!-- Toast notification -->
   <div id="toastNotification" class="toast hidden"></div>
 
   <script src="./firebase-config.js?v=8"></script>
   <script src="./emailjs-config.js?v=1"></script>
   <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
-  <script type="module" src="./app.js?v=22"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <script type="module" src="./app.js?v=24"></script>
 </body>
 </html>

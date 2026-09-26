@@ -43,7 +43,7 @@ if (emailjsReady) {
 
 // ── Version stamp – if you don't see this line in the Console after page load,
 //    the browser is still serving old cached code. Hard-reload with Ctrl+Shift+R.
-console.log("%c[Cornucopia] app.js v12 loaded ✓", "color:green;font-weight:bold;font-size:14px");
+console.log("%c[Cornucopia] app.js v13 loaded ✓", "color:green;font-weight:bold;font-size:14px");
 
 const authScreen = byId("authScreen");
 const appScreen = byId("appScreen");
@@ -150,11 +150,11 @@ byId("modelPageSaveCategoryButton")?.addEventListener("click", saveModelPageCate
 byId("modelPageSavePricingButton")?.addEventListener("click", saveModelPagePricing);
 byId("modelPageSaveCtaButton")?.addEventListener("click", saveModelPageCta);
 partnerSelectForSubscribers?.addEventListener("change", syncPartnerSubscribersSelection);
+partnerSelectForSubscribers?.addEventListener("change", () =>
+  renderShareActivityReport(partnerSelectForSubscribers.value, ADMIN_SHARE_REPORT_IDS, true));
 byId("cardTotalUploads")?.addEventListener("click", () => { setActiveScreen("uploads"); setSubmissionFilter("all"); });
 byId("cardApprovedUploads")?.addEventListener("click", () => { setActiveScreen("uploads"); setSubmissionFilter("approved"); });
-byId("cardOpenCount")?.addEventListener("click", () => { setActiveScreen("uploads"); setSubmissionFilter("all"); });
-byId("cardSaveCount")?.addEventListener("click", () => { setActiveScreen("uploads"); setSubmissionFilter("all"); });
-// Clicking Opens/Saves hint text is handled in the card — both go to uploads so user can click a model for analytics
+byId("cardReport")?.addEventListener("click", () => setActiveScreen("report"));
 filterAllSubmissions?.addEventListener("click", () => setSubmissionFilter("all"));
 filterApprovedSubmissions?.addEventListener("click", () => setSubmissionFilter("approved"));
 filterPendingSubmissions?.addEventListener("click", () => setSubmissionFilter("pending"));
@@ -166,8 +166,7 @@ targetModeInput?.addEventListener("change", () => {
 
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
-  if (!byId("analyticsModal")?.classList.contains("hidden")) closeAnalytics();
-  else if (!byId("detailsModal")?.classList.contains("hidden")) closeDetailsModal();
+  if (!byId("detailsModal")?.classList.contains("hidden")) closeDetailsModal();
   else if (!byId("modelDetailModal")?.classList.contains("hidden")) closeModelDetail();
   else if (!byId("uploadModal")?.classList.contains("hidden")) closeUploadModal();
 });
@@ -230,12 +229,6 @@ function bindModals() {
   // Done button closes model detail
   byId("doneModelDetail")?.addEventListener("click", closeModelDetail);
 
-  // Analytics modal
-  byId("closeAnalytics")?.addEventListener("click", closeAnalytics);
-  byId("analyticsModal")?.addEventListener("click", (e) => {
-    if (e.target === byId("analyticsModal")) closeAnalytics();
-  });
-
   // Details modal
   byId("closeDetails")?.addEventListener("click", closeDetailsModal);
   byId("detailsModal")?.addEventListener("click", (e) => {
@@ -268,67 +261,6 @@ function bindModals() {
   byId("modelPageAddQuestionButton")?.addEventListener("click", addQuestionToModelPage);
 
 
-}
-
-function closeAnalytics() {
-  byId("analyticsModal")?.classList.add("hidden");
-}
-
-async function renderQuestionAnalytics(item, globalYes, globalNo, opens, sent) {
-  const section = byId("questionAnalyticsSection");
-  const list = byId("questionAnalyticsList");
-  if (!section || !list) return;
-
-  // Load questions from submission
-  const questionsSnap = await get(dbRef(db, `${ROOT}/submissions/${item.id}/questions`));
-  if (!questionsSnap.exists()) { section.style.display = "none"; return; }
-
-  const questions = Object.values(questionsSnap.val());
-  if (!questions.length) { section.style.display = "none"; return; }
-
-  section.style.display = "";
-  list.innerHTML = "";
-
-  const typeLabels = { yes_no: "Yes / No", multiple_choice: "Multiple Choice", rating: "Rating", open_text: "Open Text" };
-
-  questions.forEach((q) => {
-    const card = document.createElement("div");
-    card.className = "q-analytics-card";
-    card.innerHTML = `<div class="q-analytics-header">
-      <span class="question-type-badge qtype-${q.type}">${typeLabels[q.type] || q.type}</span>
-      <p class="q-analytics-text">${escapeHtml(q.text || "")}</p>
-    </div>`;
-
-    const body = document.createElement("div");
-    body.className = "q-analytics-body";
-
-    if (q.type === "yes_no") {
-      // Use global yes/no since the app maps to a single question
-      const total = globalYes + globalNo || 1;
-      const yesPct = Math.round((globalYes / total) * 100);
-      const noPct = Math.round((globalNo / total) * 100);
-      body.innerHTML = `
-        <div class="vote-bar-row" style="margin-top:8px">
-          <span class="vote-label yes-label">${globalYes} Yes (${yesPct}%)</span>
-          <div class="vote-bar-track">
-            <div class="vote-bar-yes" style="width:${yesPct}%"></div>
-            <div class="vote-bar-no" style="width:${noPct}%"></div>
-          </div>
-          <span class="vote-label no-label">${globalNo} No (${noPct}%)</span>
-        </div>
-        <p class="muted" style="font-size:12px;margin-top:6px">${opens} total response${opens !== 1 ? "s" : ""} out of ${sent || "?"} delivered</p>`;
-    } else if (q.type === "rating") {
-      body.innerHTML = `<p class="muted" style="font-size:13px;margin-top:6px">Rating responses tracked globally — see overall rating above.</p>`;
-    } else if (q.type === "multiple_choice") {
-      const opts = Array.isArray(q.options) ? q.options : [];
-      body.innerHTML = `<p class="muted" style="font-size:13px;margin-top:6px">Per-option tracking coming soon. ${opts.length} option${opts.length !== 1 ? "s" : ""}: ${opts.map(o => escapeHtml(o)).join(", ")}</p>`;
-    } else if (q.type === "open_text") {
-      body.innerHTML = `<p class="muted" style="font-size:13px;margin-top:6px">Open text responses are not aggregated automatically.</p>`;
-    }
-
-    card.appendChild(body);
-    list.appendChild(card);
-  });
 }
 
 function closeDetailsModal() {
@@ -1336,6 +1268,8 @@ async function loadAnalytics() {
 
     openCount.textContent = String(opens);
     saveCount.textContent = String(saves);
+    // Admin has no Report screen (Manage Partner covers this per-partner instead).
+    if (!isAdmin) renderShareActivityReport(currentUser.uid, MY_SHARE_REPORT_IDS, false);
   } catch {
     openCount.textContent = "0";
     saveCount.textContent = "0";
@@ -1435,7 +1369,8 @@ async function sendModelToSelectedUsers() {
         MName: modelKey,
         saved: false,
         Rating: "0.0",
-        answer: "pending"
+        answer: "pending",
+        assignedAt: Date.now()
       });
       assigned += 1;
     }
@@ -1561,6 +1496,134 @@ async function savePartnerSubscribersMapping() {
     }
   } catch (err) {
     partnerSubscribersMessage.textContent = `Save failed: ${err.message || err}`;
+  }
+}
+
+// ─── Sharing activity report (Epic 14) ──────────────────────────────────────
+// Same underlying report, two homes: admin's Manage Partner screen (picks any
+// partner via the existing subscriber-mapping dropdown, full drill-down to
+// user identities - the requirement explicitly frames that as an admin
+// action, "celebrate high sharing users") and each partner's own Report
+// screen (always themselves, no drill-down - a partner seeing the SHAPE of
+// their sharing distribution is useful; seeing individual end-users' names
+// and behavior wasn't asked for and isn't this function's call to make).
+
+const ADMIN_SHARE_REPORT_IDS = {
+  empty: "partnerShareReportEmpty", body: "partnerShareReportBody", statsRow: "partnerShareStatsRow",
+  timelineCanvas: "partnerShareTimelineChart", histCanvas: "partnerShareHistogramChart", binUsersList: "partnerShareBinUsers"
+};
+const MY_SHARE_REPORT_IDS = {
+  empty: "reportShareEmpty", body: "reportShareBody", statsRow: "reportShareStatsRow",
+  timelineCanvas: "reportShareTimelineChart", histCanvas: "reportShareHistogramChart", binUsersList: null
+};
+
+async function renderShareActivityReport(targetUid, ids, allowDrilldown) {
+  const emptyMsg = byId(ids.empty);
+  const body = byId(ids.body);
+  if (!targetUid) {
+    if (emptyMsg) { emptyMsg.textContent = "Select a partner above to see their sharing activity."; emptyMsg.classList.remove("hidden"); }
+    if (body) body.classList.add("hidden");
+    return;
+  }
+
+  try {
+    const [usersSnap, submissionsAll, allEvents] = await Promise.all([
+      get(dbRef(db, `${ROOT}/users`)),
+      getAllSubmissions(),
+      getAllEvents()
+    ]);
+    const usersMap = usersSnap.exists() ? usersSnap.val() : {};
+    const targetProfile = usersMap[targetUid] || {};
+    const businessId = targetProfile.businessId || targetUid;
+    const modelKeys = new Set(
+      submissionsAll.filter((s) => s.businessId === businessId).map((s) => s.modelKey).filter(Boolean)
+    );
+
+    const shareEvents = allEvents.filter((e) => e.type === "share" && modelKeys.has(e.modelKey));
+
+    if (emptyMsg) emptyMsg.classList.toggle("hidden", shareEvents.length > 0);
+    if (body) body.classList.toggle("hidden", shareEvents.length === 0);
+    if (!shareEvents.length) {
+      if (emptyMsg) emptyMsg.textContent = "No shares recorded yet.";
+      return;
+    }
+
+    const perUser = {};
+    shareEvents.forEach((e) => { perUser[e.uid] = (perUser[e.uid] || 0) + 1; });
+    const uniqueSharers = Object.keys(perUser).length;
+
+    const statsRow = byId(ids.statsRow);
+    if (statsRow) {
+      const tiles = [
+        { value: shareEvents.length, label: "Total Shares" },
+        { value: uniqueSharers, label: "Unique Sharers" },
+        { value: uniqueSharers ? (shareEvents.length / uniqueSharers).toFixed(1) : "0", label: "Avg per Sharer" }
+      ];
+      statsRow.innerHTML = tiles.map((t) => `
+        <div class="mp-stat">
+          <span class="mp-stat-value">${escapeHtml(String(t.value))}</span>
+          <span class="mp-stat-label">${escapeHtml(t.label)}</span>
+        </div>`).join("");
+    }
+
+    const { labels, series } = bucketEventsByDay(shareEvents, ["share"]);
+    renderChart(ids.timelineCanvas, {
+      type: "line",
+      data: { labels, datasets: [{ label: "Shares", data: series.share || [], borderColor: CHART_COLORS.shares, backgroundColor: CHART_COLORS.shares, tension: 0.25, borderWidth: 2, pointRadius: 3 }] },
+      options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+    });
+
+    // Histogram bin 0 needs the full set of users these models were ever
+    // assigned to, not just the ones who share - otherwise "0 shares" has no
+    // denominator to come from.
+    const assignedUids = new Set();
+    if (usersSnap.exists() && modelKeys.size) {
+      usersSnap.forEach((userSnap) => {
+        const modelsSnap = userSnap.child("models");
+        for (const mk of modelKeys) {
+          if (modelsSnap.child(mk).exists()) { assignedUids.add(userSnap.key); break; }
+        }
+      });
+    }
+
+    const maxCount = Math.max(0, ...Object.values(perUser));
+    const bins = buildShareBins(maxCount);
+    const binUsers = bins.map(() => []);
+    binUsers[0] = [...assignedUids].filter((uid) => !perUser[uid]);
+    Object.entries(perUser).forEach(([uid, count]) => {
+      const idx = bins.findIndex((b) => count >= b.min && count <= b.max);
+      if (idx !== -1) binUsers[idx].push(uid);
+    });
+
+    const binUsersEl = ids.binUsersList ? byId(ids.binUsersList) : null;
+    if (binUsersEl) { binUsersEl.classList.add("hidden"); binUsersEl.innerHTML = ""; }
+
+    renderChart(ids.histCanvas, {
+      type: "bar",
+      data: { labels: bins.map((b) => b.label), datasets: [{ label: "Users", data: binUsers.map((u) => u.length), backgroundColor: CHART_COLORS.shares, borderRadius: 4, maxBarThickness: 48 }] },
+      options: {
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+        onClick: (allowDrilldown && binUsersEl) ? (evt, elements) => {
+          if (!elements.length) return;
+          const idx = elements[0].index;
+          const uids = binUsers[idx];
+          if (!uids.length) { binUsersEl.classList.add("hidden"); return; }
+          binUsersEl.classList.remove("hidden");
+          binUsersEl.innerHTML = `<p class="muted" style="margin:0 0 6px">${uids.length} user${uids.length !== 1 ? "s" : ""} with ${bins[idx].label} shares:</p>`
+            + uids.map((uid) => {
+                const u = usersMap[uid] || {};
+                const name = u.name || u.email || uid;
+                const count = perUser[uid] || 0;
+                return `<div class="user-row"><span>${escapeHtml(name)} <small>(${escapeHtml(uid)})</small> — ${count} share${count !== 1 ? "s" : ""}</span></div>`;
+              }).join("");
+        } : undefined
+      }
+    });
+  } catch (err) {
+    if (emptyMsg) { emptyMsg.textContent = `Could not load sharing activity: ${err.message || err}`; emptyMsg.classList.remove("hidden"); }
+    if (body) body.classList.add("hidden");
   }
 }
 
@@ -2105,7 +2168,7 @@ async function sendApprovedPartnerModelToUsers() {
       const userModelRef = dbRef(db, `${ROOT}/users/${uid}/models/${modelKey}`);
       const existing = await get(userModelRef);
       if (existing.exists()) continue;
-      await set(userModelRef, { MName: modelKey, saved: false, Rating: "0.0", answer: "pending" });
+      await set(userModelRef, { MName: modelKey, saved: false, Rating: "0.0", answer: "pending", assignedAt: Date.now() });
       assigned += 1;
     }
     // Update data/sent count so analytics reflects delivery
@@ -2188,66 +2251,6 @@ async function saveModelDetails() {
     showToast(`Could not save: ${err.message || err}`, "error");
   } finally {
     if (saveBtn) { saveBtn.textContent = "Save Details"; saveBtn.disabled = false; }
-  }
-}
-
-async function openModelAnalytics(item) {
-  if (!item?.id) return;
-  const title = item.displayName || item.fileName || "Model";
-  const titleEl = byId("analyticsTitle");
-  const metaEl = byId("analyticsMeta");
-  const loadingEl = byId("analyticsLoading");
-  const contentEl = byId("analyticsContent");
-  if (titleEl) titleEl.textContent = title;
-  if (metaEl) metaEl.textContent = `Status: ${statusLabel(item)} · Uploaded ${formatTs(item.createdAt)}`;
-  if (loadingEl) loadingEl.classList.remove("hidden");
-  if (contentEl) contentEl.classList.add("hidden");
-  byId("analyticsModal")?.classList.remove("hidden");
-
-  try {
-    const modelKey = item.modelKey;
-    let data = { sent: 0, saved: 0, yes: 0, no: 0, rating: "0.0" };
-    if (modelKey) {
-      const snap = await get(dbRef(db, `${ROOT}/models/${modelKey}/data`));
-      if (snap.exists()) data = { ...data, ...snap.val() };
-    }
-
-    // Fall back to pushedCount from submission if model data/sent not yet set
-    const sent = toInt(data.sent, 0) || toInt(item.pushedCount, 0);
-    const saved = toInt(data.saved, 0);
-    const yes = toInt(data.yes, 0);
-    const no = toInt(data.no, 0);
-    const opens = yes + no;
-    const rating = parseFloat(data.rating) || 0;
-    const responseRate = sent > 0 ? Math.round((opens / sent) * 100) : 0;
-    const saveRate = opens > 0 ? Math.round((saved / opens) * 100) : 0;
-    const total = yes + no || 1;
-
-    const s = (id, val) => { const el = byId(id); if (el) el.textContent = val; };
-    s("statSent", sent || "—");
-    s("statOpens", opens);
-    s("statSaves", saved);
-    s("statResponseRate", sent > 0 ? `${responseRate}%` : "—");
-    s("statConversionRate", opens > 0 ? `${saveRate}%` : "—");
-    s("statYesLabel", `${yes} Yes`);
-    s("statNoLabel", `${no} No`);
-    s("statRating", rating.toFixed(1));
-
-    const yesBar = byId("voteBarYes");
-    const noBar = byId("voteBarNo");
-    if (yesBar) yesBar.style.width = `${Math.round((yes / total) * 100)}%`;
-    if (noBar) noBar.style.width = `${Math.round((no / total) * 100)}%`;
-
-    const stars = "★".repeat(Math.round(rating)) + "☆".repeat(5 - Math.round(rating));
-    s("statStars", stars);
-
-    // Load questions and their response data
-    renderQuestionAnalytics(item, yes, no, opens, sent);
-
-    if (loadingEl) loadingEl.classList.add("hidden");
-    if (contentEl) contentEl.classList.remove("hidden");
-  } catch (err) {
-    if (loadingEl) loadingEl.textContent = `Could not load analytics: ${err.message || err}`;
   }
 }
 
@@ -2598,6 +2601,7 @@ async function openModelPage(item) {
 
     await renderModelPageQuestions(item, yes, no, opens, sent);
     await renderModelPageDistribution(item);
+    renderModelPageReport(item);
 
     // Show thumbnail or placeholder
     renderModelPageThumbnail(item.thumbnailUrl || null);
@@ -2642,6 +2646,212 @@ function renderModelPageActions(item) {
   bindSubmissionActionButtons(card);
 }
 
+// ─── Reporting (Phase 6) ─────────────────────────────────────────────────────
+// Fixed categorical order, validated colorblind-safe as a triad (see
+// docs/requirements) - reused everywhere a chart needs Views/CTA/Shares
+// series identity, never reassigned per-chart.
+const CHART_COLORS = { views: "#0c7c59", cta: "#d97706", shares: "#2563eb", single: "#0c7c59" };
+
+if (window.Chart) {
+  Chart.defaults.font.family = "Manrope, sans-serif";
+  Chart.defaults.color = "#5e7a72";
+  Chart.defaults.borderColor = "#d9e7e1";
+}
+
+// Every report on this page can be viewed more than once per session (admin
+// switching between partners, re-opening a model's detail page, ...) - keyed
+// by canvas id rather than one variable per chart so each report screen's
+// canvases stay independent instances instead of fighting over one slot.
+const _charts = new Map();
+function renderChart(canvasId, config) {
+  const canvas = byId(canvasId);
+  if (!canvas || !window.Chart) return null;
+  const existing = _charts.get(canvasId);
+  if (existing) existing.destroy();
+  const chart = new Chart(canvas, config);
+  _charts.set(canvasId, chart);
+  return chart;
+}
+
+function computeStats(numbers) {
+  if (!numbers.length) return null;
+  const sorted = [...numbers].sort((a, b) => a - b);
+  const n = sorted.length;
+  const mean = sorted.reduce((a, b) => a + b, 0) / n;
+  const mid = Math.floor(n / 2);
+  const median = n % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  const variance = sorted.reduce((acc, x) => acc + (x - mean) ** 2, 0) / n;
+  return { n, mean, median, sd: Math.sqrt(variance), min: sorted[0], max: sorted[n - 1] };
+}
+
+function formatDuration(ms) {
+  const totalSec = Math.round(ms / 1000);
+  if (totalSec < 60) return totalSec + "s";
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  return min + "m" + (sec ? " " + sec + "s" : "");
+}
+
+/** Buckets events into daily counts per type, filling gaps with 0 so the
+ * timeline doesn't misleadingly connect across days with no activity. */
+function bucketEventsByDay(events, types) {
+  if (!events.length) return { labels: [], series: Object.fromEntries(types.map((t) => [t, []])) };
+  const dayKey = (ts) => new Date(ts).toISOString().slice(0, 10);
+  const minTs = Math.min(...events.map((e) => e.createdAt || 0));
+  const maxTs = Math.max(...events.map((e) => e.createdAt || 0));
+  const oneDay = 24 * 60 * 60 * 1000;
+
+  const labels = [];
+  const dayIndex = {};
+  for (let t = minTs; t <= maxTs + 1; t += oneDay) {
+    const key = dayKey(t);
+    if (!(key in dayIndex)) { dayIndex[key] = labels.length; labels.push(key); }
+  }
+
+  const series = {};
+  types.forEach((t) => { series[t] = new Array(labels.length).fill(0); });
+  events.forEach((e) => {
+    const idx = dayIndex[dayKey(e.createdAt || 0)];
+    if (idx !== undefined && series[e.type]) series[e.type][idx]++;
+  });
+  return { labels, series };
+}
+
+/** Every rating ever submitted for this model, one per user who rated it -
+ * scanning cornucopia/users is the only way to get this: models/{key}/data/rating
+ * is a single overwritten scalar (the legacy MVP schema), not a running
+ * history, so real stats (median/SD/distribution) have to come from each
+ * user's own users/{uid}/models/{modelKey}/Rating instead. */
+async function getRatingsForModel(modelKey) {
+  if (!modelKey) return [];
+  const snap = await get(dbRef(db, `${ROOT}/users`));
+  if (!snap.exists()) return [];
+  const ratings = [];
+  snap.forEach((userSnap) => {
+    const n = parseFloat(userSnap.child("models").child(modelKey).child("Rating").val());
+    if (Number.isFinite(n) && n > 0) ratings.push(n);
+  });
+  return ratings;
+}
+
+async function getEventsForModel(modelKey) {
+  if (!modelKey) return [];
+  const snap = await get(dbRef(db, `${ROOT}/events`));
+  if (!snap.exists()) return [];
+  return Object.values(snap.val()).filter((e) => e.modelKey === modelKey);
+}
+
+async function getAllEvents() {
+  const snap = await get(dbRef(db, `${ROOT}/events`));
+  return snap.exists() ? Object.values(snap.val()) : [];
+}
+
+/** Bins match the requirement's own example (0, 1-10, 11-20, ...), sized to
+ * whatever the highest per-user share count actually is. */
+function buildShareBins(maxCount) {
+  const bins = [{ label: "0", min: 0, max: 0 }];
+  let start = 1;
+  while (start <= Math.max(maxCount, 1)) {
+    const end = start + 9;
+    bins.push({ label: `${start}-${end}`, min: start, max: end });
+    start = end + 1;
+  }
+  return bins;
+}
+
+async function renderModelPageReport(item) {
+  const reportCard = byId("modelPageReportCard");
+  if (!item.modelKey) {
+    if (reportCard) reportCard.style.display = "none";
+    return;
+  }
+  if (reportCard) reportCard.style.display = "";
+
+  const [ratings, events] = await Promise.all([
+    getRatingsForModel(item.modelKey),
+    getEventsForModel(item.modelKey)
+  ]);
+  renderRatingReport(ratings);
+  renderEngagementReport(events);
+}
+
+function renderRatingReport(ratings) {
+  const statsRow = byId("modelPageRatingStatsRow");
+  const emptyMsg = byId("modelPageRatingEmpty");
+  const wrap = byId("modelPageRatingChartWrap");
+  const stats = computeStats(ratings);
+
+  if (!stats) {
+    if (statsRow) statsRow.innerHTML = "";
+    if (wrap) wrap.classList.add("hidden");
+    if (emptyMsg) emptyMsg.classList.remove("hidden");
+    return;
+  }
+  if (wrap) wrap.classList.remove("hidden");
+  if (emptyMsg) emptyMsg.classList.add("hidden");
+
+  if (statsRow) {
+    const tiles = [
+      { value: stats.mean.toFixed(2), label: "Average" },
+      { value: stats.median.toFixed(1), label: "Median" },
+      { value: stats.sd.toFixed(2), label: "Std Dev" },
+      { value: stats.min.toFixed(0), label: "Min" },
+      { value: stats.max.toFixed(0), label: "Max" },
+      { value: stats.n, label: "Ratings" }
+    ];
+    statsRow.innerHTML = tiles.map((t) => `
+      <div class="mp-stat">
+        <span class="mp-stat-value">${escapeHtml(String(t.value))}</span>
+        <span class="mp-stat-label">${escapeHtml(t.label)}</span>
+      </div>`).join("");
+  }
+
+  const dist = [0, 0, 0, 0, 0];
+  ratings.forEach((r) => { const idx = Math.round(r) - 1; if (idx >= 0 && idx < 5) dist[idx]++; });
+
+  renderChart("modelPageRatingChart", {
+    type: "bar",
+    data: { labels: ["1★", "2★", "3★", "4★", "5★"], datasets: [{ label: "Ratings", data: dist, backgroundColor: CHART_COLORS.single, borderRadius: 4, maxBarThickness: 48 }] },
+    options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+  });
+}
+
+function renderEngagementReport(events) {
+  const wrap = byId("modelPageEngagementChart")?.parentElement;
+  const emptyMsg = byId("modelPageEngagementEmpty");
+  const avgDwellEl = byId("modelPageAvgDwell");
+
+  const dwellEvents = events.filter((e) => e.type === "dwell");
+  if (avgDwellEl) {
+    avgDwellEl.textContent = dwellEvents.length
+      ? formatDuration(dwellEvents.reduce((a, e) => a + (e.durationMs || 0), 0) / dwellEvents.length)
+      : "—";
+  }
+
+  const timedEvents = events.filter((e) => e.type === "view" || e.type === "cta_click" || e.type === "share");
+  if (!timedEvents.length) {
+    if (wrap) wrap.classList.add("hidden");
+    if (emptyMsg) emptyMsg.classList.remove("hidden");
+    return;
+  }
+  if (wrap) wrap.classList.remove("hidden");
+  if (emptyMsg) emptyMsg.classList.add("hidden");
+
+  const { labels, series } = bucketEventsByDay(timedEvents, ["view", "cta_click", "share"]);
+  renderChart("modelPageEngagementChart", {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        { label: "Views", data: series.view, borderColor: CHART_COLORS.views, backgroundColor: CHART_COLORS.views, tension: 0.25, borderWidth: 2, pointRadius: 3 },
+        { label: "CTA Clicks", data: series.cta_click, borderColor: CHART_COLORS.cta, backgroundColor: CHART_COLORS.cta, tension: 0.25, borderWidth: 2, pointRadius: 3 },
+        { label: "Shares", data: series.share, borderColor: CHART_COLORS.shares, backgroundColor: CHART_COLORS.shares, tension: 0.25, borderWidth: 2, pointRadius: 3 }
+      ]
+    },
+    options: { maintainAspectRatio: false, plugins: { legend: { display: true, position: "bottom" } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+  });
+}
+
 /** Renders the free-form key/value attributes set via the "Details" modal
  * (My Uploads' Details button, saveModelDetails) - that modal writes to
  * submissions/{id}/attributes but nothing previously read it back on this
@@ -2672,6 +2882,11 @@ async function renderModelPageQuestions(item, yes, no, opens, sent) {
   const snap = await get(dbRef(db, `${ROOT}/submissions/${item.id}/questions`));
   const entries = snap.exists() ? Object.entries(snap.val()) : [];
 
+  // The list gets fully rebuilt below - destroy any charts from the previous
+  // render so they don't linger as detached Chart.js instances.
+  _mcCharts.forEach((entry) => entry.chart.destroy());
+  _mcCharts.clear();
+
   list.innerHTML = "";
 
   if (!entries.length) {
@@ -2688,7 +2903,10 @@ async function renderModelPageQuestions(item, yes, no, opens, sent) {
   const yesPct = Math.round((yes / total) * 100);
   const noPct  = Math.round((no  / total) * 100);
 
-  entries.forEach(([qId, q]) => {
+  for (const [qId, q] of entries) {
+    // MC/rating need an extra fetch (scanning every user's answer for this
+    // question - RTDB has no server-side aggregation) so those two render a
+    // placeholder first and fill in once the distribution is ready.
     let analyticsHtml = "";
     if (q.type === "yes_no") {
       analyticsHtml = `
@@ -2703,13 +2921,10 @@ async function renderModelPageQuestions(item, yes, no, opens, sent) {
         <p class="muted" style="font-size:12px;margin-top:6px">
           ${yes + no} total response${(yes + no) !== 1 ? "s" : ""} out of ${sent || "?"} delivered
         </p>`;
-    } else if (q.type === "rating") {
-      analyticsHtml = `<p class="muted" style="font-size:13px;margin-top:6px">Rating tracked globally — see Rating stat above.</p>`;
-    } else if (q.type === "multiple_choice") {
-      const opts = Array.isArray(q.options) ? q.options : [];
-      analyticsHtml = `<p class="muted" style="font-size:13px;margin-top:6px">${opts.length} option${opts.length !== 1 ? "s" : ""}: ${opts.map((o) => escapeHtml(o)).join(", ")}</p>`;
+    } else if (q.type === "multiple_choice" || q.type === "rating") {
+      analyticsHtml = `<p class="muted" style="font-size:13px;margin-top:6px">Loading responses…</p>`;
     } else {
-      analyticsHtml = `<p class="muted" style="font-size:13px;margin-top:6px">Open text responses are collected in-app.</p>`;
+      analyticsHtml = `<p class="muted" style="font-size:13px;margin-top:6px">Loading responses…</p>`;
     }
 
     const card = document.createElement("div");
@@ -2721,7 +2936,7 @@ async function renderModelPageQuestions(item, yes, no, opens, sent) {
         <button class="secondary mp-del-q-btn" data-qid="${qId}" type="button"
                 style="font-size:12px;padding:4px 10px;flex-shrink:0">✕ Remove</button>
       </div>
-      <div class="q-analytics-body">${analyticsHtml}</div>
+      <div class="q-analytics-body" id="mp-q-body-${qId}">${analyticsHtml}</div>
     `;
 
     card.querySelector(".mp-del-q-btn").addEventListener("click", async () => {
@@ -2738,7 +2953,133 @@ async function renderModelPageQuestions(item, yes, no, opens, sent) {
     });
 
     list.appendChild(card);
+
+    if (q.type === "multiple_choice") renderMcDistribution(item.modelKey, qId, q);
+    else if (q.type === "rating") renderQuestionRatingDistribution(item.modelKey, qId);
+    else if (q.type === "open_text") renderOpenTextResponses(item.modelKey, qId);
+  }
+}
+
+/** Scans every user's answers/{questionId} for this model - RTDB has no
+ * server-side GROUP BY, so this is a full client-side tally, same pattern
+ * already used elsewhere in this file (e.g. loadPartnerSubscriptionAdminData). */
+async function getAnswersForQuestion(modelKey, questionId) {
+  if (!modelKey) return [];
+  const snap = await get(dbRef(db, `${ROOT}/users`));
+  if (!snap.exists()) return [];
+  const answers = [];
+  snap.forEach((userSnap) => {
+    const val = userSnap.child("models").child(modelKey).child("answers").child(questionId).val();
+    if (val !== null && val !== undefined && String(val).trim() !== "") answers.push(String(val));
   });
+  return answers;
+}
+
+const _mcCharts = new Map(); // questionId -> { chart, counts, total }
+
+async function renderMcDistribution(modelKey, qId, question) {
+  const body = byId(`mp-q-body-${qId}`);
+  if (!body) return;
+  const answers = await getAnswersForQuestion(modelKey, qId);
+
+  const options = Array.isArray(question.options) ? question.options : [];
+  const counts = {};
+  options.forEach((o) => { counts[o] = 0; });
+  answers.forEach((a) => {
+    a.split(",").map((s) => s.trim()).filter(Boolean).forEach((opt) => {
+      counts[opt] = (counts[opt] || 0) + 1;
+    });
+  });
+
+  if (!answers.length) {
+    body.innerHTML = `<p class="muted" style="font-size:13px;margin-top:6px">No responses yet. ${options.length} option${options.length !== 1 ? "s" : ""}: ${options.map((o) => escapeHtml(o)).join(", ")}</p>`;
+    return;
+  }
+
+  const canvasId = `mp-mc-chart-${qId}`;
+  body.innerHTML = `
+    <div class="report-toggle" data-qid="${qId}">
+      <button type="button" class="mc-view-raw active" data-mode="raw">Raw</button>
+      <button type="button" class="mc-view-pct" data-mode="pct">%</button>
+    </div>
+    <div class="report-chart-wrap report-chart-wrap-sm"><canvas id="${canvasId}"></canvas></div>
+    <p class="muted" style="font-size:12px;margin-top:6px">${answers.length} response${answers.length !== 1 ? "s" : ""}
+      ${answers.length !== options.reduce((a, o) => a + counts[o], 0) ? " (multi-select, options can total more than responses)" : ""}</p>`;
+
+  const canvas = byId(canvasId);
+  if (!canvas || !window.Chart) return;
+  const total = Object.values(counts).reduce((a, b) => a + b, 0) || 1;
+  const chart = new Chart(canvas, {
+    type: "bar",
+    data: {
+      labels: options,
+      datasets: [{ data: options.map((o) => counts[o]), backgroundColor: CHART_COLORS.single, borderRadius: 4, maxBarThickness: 32 }]
+    },
+    options: {
+      indexAxis: "y",
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
+    }
+  });
+  _mcCharts.set(qId, { chart, counts, options, total });
+
+  body.querySelectorAll(".report-toggle button").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      body.querySelectorAll(".report-toggle button").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      const entry = _mcCharts.get(qId);
+      if (!entry) return;
+      entry.chart.data.datasets[0].data = entry.options.map((o) =>
+        btn.dataset.mode === "pct" ? Math.round((entry.counts[o] / entry.total) * 100) : entry.counts[o]);
+      entry.chart.options.scales.x.ticks.callback = btn.dataset.mode === "pct" ? (v) => v + "%" : undefined;
+      entry.chart.update();
+    });
+  });
+}
+
+async function renderQuestionRatingDistribution(modelKey, qId) {
+  const body = byId(`mp-q-body-${qId}`);
+  if (!body) return;
+  const answers = await getAnswersForQuestion(modelKey, qId);
+  const ratings = answers.map((a) => parseFloat(a)).filter((n) => Number.isFinite(n) && n > 0);
+
+  if (!ratings.length) {
+    body.innerHTML = `<p class="muted" style="font-size:13px;margin-top:6px">No responses yet.</p>`;
+    return;
+  }
+  const stats = computeStats(ratings);
+  const canvasId = `mp-rating-q-chart-${qId}`;
+  body.innerHTML = `
+    <p class="muted" style="font-size:12px;margin:6px 0">
+      Average ${stats.mean.toFixed(2)} · Median ${stats.median.toFixed(1)} · SD ${stats.sd.toFixed(2)} · ${stats.n} response${stats.n !== 1 ? "s" : ""}
+    </p>
+    <div class="report-chart-wrap report-chart-wrap-sm"><canvas id="${canvasId}"></canvas></div>`;
+
+  const dist = [0, 0, 0, 0, 0];
+  ratings.forEach((r) => { const idx = Math.round(r) - 1; if (idx >= 0 && idx < 5) dist[idx]++; });
+  const canvas = byId(canvasId);
+  if (!canvas || !window.Chart) return;
+  new Chart(canvas, {
+    type: "bar",
+    data: { labels: ["1★", "2★", "3★", "4★", "5★"], datasets: [{ data: dist, backgroundColor: CHART_COLORS.single, borderRadius: 4, maxBarThickness: 40 }] },
+    options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+  });
+}
+
+async function renderOpenTextResponses(modelKey, qId) {
+  const body = byId(`mp-q-body-${qId}`);
+  if (!body) return;
+  const answers = await getAnswersForQuestion(modelKey, qId);
+  if (!answers.length) {
+    body.innerHTML = `<p class="muted" style="font-size:13px;margin-top:6px">No responses yet.</p>`;
+    return;
+  }
+  body.innerHTML = `
+    <div class="users-list" style="margin-top:6px">
+      ${answers.map((a) => `<div class="user-row" style="align-items:flex-start"><span>${escapeHtml(a)}</span></div>`).join("")}
+    </div>
+    <p class="muted" style="font-size:12px;margin-top:6px">${answers.length} response${answers.length !== 1 ? "s" : ""}</p>`;
 }
 
 /** Re-derives the yes/no/opens/sent stats renderModelPageQuestions needs and
@@ -2913,7 +3254,7 @@ async function renderModelPageDistribution(item) {
           for (const uid of selected) {
             const ref = dbRef(db, `${ROOT}/users/${uid}/models/${modelKey}`);
             if ((await get(ref)).exists()) continue;
-            await set(ref, { MName: modelKey, saved: false, Rating: "0.0", answer: "pending" });
+            await set(ref, { MName: modelKey, saved: false, Rating: "0.0", answer: "pending", assignedAt: Date.now() });
             assigned += 1;
           }
 

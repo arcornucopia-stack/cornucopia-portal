@@ -76,8 +76,7 @@ This document consolidates the 2026-08-16 planning notes into discrete, numbered
 | R-5.1 | Every time a user shares a product, record that interaction (who, what product, when). |
 | R-5.2 | Persist, in Firebase, a list of all entities/destinations a user has shared a product with (e.g., which channel/contact/platform). |
 
-**Open questions:**
-- Can we capture the destination for every share channel (native OS share sheet often only reports "share sheet opened," not which app the user picked)? If the OS doesn't report the destination app, R-5.2 may need to be scoped down to "share initiated" + channel-if-available.
+**Resolved (2026-08-29) — R-5.2 scoped down:** R-5.1 is fully implemented — every share (from Product Details and the AR share button) logs a timestamped event (`modelKey`, `uid`, `shareType`, `createdAt`) to `cornucopia/events`, which is what Phase 6's Partner Report sharing section (cumulative count, timeline, histogram) actually needs. The literal "which entity/destination" from R-5.2 is **not implemented** — neither platform's native share chooser hands that back without real native plumbing (Android needs a `PendingIntent` + `BroadcastReceiver` around `createChooser`; iOS's completion handler could report it more cheaply, but doing it on one platform and not the other produces an inconsistent schema). Flagged here as a real gap rather than shipped silently; would need dedicated native work on both platforms to close.
 
 ---
 
@@ -112,8 +111,7 @@ models/{modelId}/
   saved: true
 ```
 
-**Open questions:**
-- Is this a migration of existing data, or does `question_answers` only apply going forward? If existing data must migrate, a one-time backfill script is needed.
+**Resolved (2026-09-26):** the V2 app already stores answers as `users/{uid}/models/{modelKey}/answers/{questionId}: "<answer>"` — an explicit question-ID → answer mapping, which is what R-7.1 asks for. The node keeps its existing name `answers` rather than being renamed to `question_answers`: a rename would need a backfill migration plus dual-read logic in the portal with no functional benefit. No migration needed.
 
 ---
 
@@ -213,10 +211,10 @@ models/{modelId}/
 1. Mailing-list overage pricing/payment flow (Epic 1).
 2. Opt-in/suppression list scope — per-partner or shared (Epic 1).
 3. Behavior of in-page action buttons after approval (Epic 2).
-4. Share destination capture limits imposed by native OS share sheets (Epic 5).
-5. Migration plan for existing `answers` data into `question_answers` (Epic 7).
 
 **Resolved:**
+- ~~Migration plan for `answers` → `question_answers` (Epic 7)~~ — existing `answers/{questionId}` already is the explicit mapping; kept as-is, no migration (2026-09-26).
 - ~~Final 3-item admin left-nav naming/composition (Epic 2)~~ — Dashboard, Manage Uploads, Manage Partner (shipped 2026-08-29).
 - ~~Can a product show both a deal and a CTA at once (Epic 9)?~~ — Yes, confirmed by the mockup (shipped 2026-08-29).
 - ~~CTA link validation rules (Epic 9)~~ — must start with http(s):// (shipped 2026-08-29).
+- ~~Share destination capture limits (Epic 5)~~ — scoped down: count + timing is fully implemented; per-destination capture would need dedicated native work on both platforms and was not attempted (shipped 2026-08-29).

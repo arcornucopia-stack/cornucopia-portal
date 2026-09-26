@@ -592,52 +592,6 @@ button[disabled] {
 .toast.toast-error { background: var(--bad); }
 .toast.hidden { display: none; }
 
-/* Analytics modal */
-.analytics-stats {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-  margin-bottom: 24px;
-}
-
-.analytics-stat {
-  background: #f4faf7;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 16px 12px;
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.analytics-stat-value {
-  font-size: 32px;
-  font-weight: 800;
-  font-family: Space Grotesk, sans-serif;
-  color: var(--brand);
-  line-height: 1;
-}
-
-.analytics-stat-label {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--soft);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.analytics-section { margin-bottom: 20px; }
-
-.analytics-section-title {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--soft);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin: 0 0 10px;
-}
-
 .vote-bar-row {
   display: flex;
   align-items: center;
@@ -674,21 +628,6 @@ button[disabled] {
 
 .yes-label { color: var(--brand); text-align: right; }
 .no-label { color: var(--bad); }
-
-.rating-display {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-
-.rating-value {
-  font-size: 36px;
-  font-weight: 800;
-  font-family: Space Grotesk, sans-serif;
-  color: var(--warn);
-}
-
-.rating-stars { font-size: 20px; letter-spacing: 2px; }
 
 /* Question analytics cards */
 .q-analytics-card {
@@ -1069,6 +1008,47 @@ button[disabled] {
   margin-bottom: 16px;
 }
 .mp-card:last-child { margin-bottom: 0; }
+
+/* Chart.js needs an explicit-height, position:relative box to size its canvas
+   into (with maintainAspectRatio:false) - a bare <canvas> has no intrinsic
+   height and Chart.js won't fill an unconstrained parent. */
+.report-chart-wrap {
+  position: relative;
+  width: 100%;
+  height: 260px;
+}
+.report-chart-wrap-sm { height: 200px; }
+
+.report-toggle {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 6px 0 10px;
+}
+.report-toggle button {
+  background: #fff;
+  color: var(--ink);
+  border: none;
+  border-radius: 0;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.report-toggle button.active {
+  background: var(--brand);
+  color: #fff;
+}
+
+.histogram-bin-list {
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  padding: 8px;
+  margin-top: 12px;
+}
 
 .mp-section-title {
   font-size: 11px;
