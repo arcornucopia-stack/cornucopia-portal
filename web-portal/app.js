@@ -100,7 +100,40 @@ const addCategoryButton = byId("addCategoryButton");
 const categoriesList = byId("categoriesList");
 const categoriesMessage = byId("categoriesMessage");
 let categoriesCache = {};
+// Bridge table cornucopia/category_models/{categoryId}/{submissionId} - one row
+// per category<->model link (categoryId, categoryName, modelId, modelName...).
+// Unlinking deletes one row; deleting a category deletes its whole branch.
+let categoryLinksCache = {};
 let currentCategoryFilter = "";
+
+// Declared up here (not next to the pricing code) because the bindings below
+// run at load time and would otherwise hit these consts before they exist.
+const CURRENCIES = [
+  ["USD", "US Dollar"], ["EUR", "Euro"], ["GBP", "British Pound"], ["CAD", "Canadian Dollar"],
+  ["AUD", "Australian Dollar"], ["NZD", "New Zealand Dollar"], ["GHS", "Ghanaian Cedi"],
+  ["NGN", "Nigerian Naira"], ["KES", "Kenyan Shilling"], ["ZAR", "South African Rand"],
+  ["EGP", "Egyptian Pound"], ["MAD", "Moroccan Dirham"], ["XOF", "West African CFA Franc"],
+  ["XAF", "Central African CFA Franc"], ["AED", "UAE Dirham"], ["SAR", "Saudi Riyal"],
+  ["INR", "Indian Rupee"], ["CNY", "Chinese Yuan"], ["JPY", "Japanese Yen"], ["KRW", "South Korean Won"],
+  ["SGD", "Singapore Dollar"], ["HKD", "Hong Kong Dollar"], ["CHF", "Swiss Franc"],
+  ["SEK", "Swedish Krona"], ["NOK", "Norwegian Krone"], ["DKK", "Danish Krone"],
+  ["BRL", "Brazilian Real"], ["MXN", "Mexican Peso"]
+];
+const DEFAULT_CURRENCY = "USD";
+const CTA_LABELS = {
+  buy_now: "Buy Now", subscribe: "Subscribe", donate: "Donate",
+  pre_order: "Pre-Order", join_waitlist: "Join Waitlist"
+};
+// The partner-editable content of a listing. A partner change to any of these
+// on an approved model puts it back into review (status "updated"); the last
+// approved values are kept in liveVersion and older ones in history.
+const VERSIONED_FIELDS = ["displayName", "description", "currency", "brandValue", "price", "dealType",
+  "ctaType", "ctaLink", "attributes", "questions"];
+const FIELD_LABELS = {
+  displayName: "Name", description: "Description", currency: "Currency", brandValue: "Brand value",
+  price: "Price", dealType: "Deal type", ctaType: "Call to action", ctaLink: "CTA link",
+  attributes: "Details", questions: "Questions"
+};
 
 const totalUploads = byId("totalUploads");
 const approvedUploads = byId("approvedUploads");
@@ -149,6 +182,17 @@ categoryFilterSelect?.addEventListener("change", () => {
 byId("modelPageSaveCategoryButton")?.addEventListener("click", saveModelPageCategory);
 byId("modelPageSavePricingButton")?.addEventListener("click", saveModelPagePricing);
 byId("modelPageSaveCtaButton")?.addEventListener("click", saveModelPageCta);
+byId("modelPageSaveListingButton")?.addEventListener("click", saveModelPageListing);
+populateCurrencySelect(byId("modelPageCurrencySelect"));
+// Every field the phone preview reflects re-renders it as the user types.
+["modelPageNameInput", "modelPageDescriptionInput", "modelPageBrandValueInput", "modelPagePriceInput",
+  "modelPageCurrencySelect", "modelPageCtaTypeSelect", "modelPageCtaLinkInput"]
+  .forEach((id) => byId(id)?.addEventListener("input", renderModelPagePreview));
+document.querySelectorAll('input[name="modelPageDealType"]')
+  .forEach((r) => r.addEventListener("change", renderModelPagePreview));
+["displayNameInput", "modelDescriptionInput"].forEach((id) => byId(id)?.addEventListener("input", renderUploadPreview));
+byId("glbInput")?.addEventListener("change", renderUploadPreview);
+renderUploadPreview();
 partnerSelectForSubscribers?.addEventListener("change", syncPartnerSubscribersSelection);
 partnerSelectForSubscribers?.addEventListener("change", () =>
   renderShareActivityReport(partnerSelectForSubscribers.value, ADMIN_SHARE_REPORT_IDS, true));
@@ -158,6 +202,12 @@ byId("cardReport")?.addEventListener("click", () => setActiveScreen("report"));
 filterAllSubmissions?.addEventListener("click", () => setSubmissionFilter("all"));
 filterApprovedSubmissions?.addEventListener("click", () => setSubmissionFilter("approved"));
 filterPendingSubmissions?.addEventListener("click", () => setSubmissionFilter("pending"));
+// Approve/reject buttons inside the re-approval diff card are rebuilt on every
+// render, so they're delegated from the card rather than bound one by one.
+byId("modelPageChangesCard")?.addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-id][data-action]");
+  if (btn) runSubmissionAction(btn);
+});
 
 targetModeInput?.addEventListener("change", () => {
   const isSpecific = targetModeInput.value === "specific_users";
@@ -175,6 +225,7 @@ function bindModals() {
   // Upload modal – open
   byId("openUploadModal")?.addEventListener("click", () => {
     byId("uploadModal")?.classList.remove("hidden");
+    renderUploadPreview();
   });
   // Upload modal – Cancel and Done replace the old X button.
   // Pass force=true so they can close the modal even while step 2 is showing.
@@ -566,8 +617,11 @@ async function addQuestionToUploadModal() {
     if (options.length < 2) { if (msgEl) msgEl.textContent = "Add at least 2 options."; return; }
   }
 
-  const questionRef = push(dbRef(db, `${ROOT}/submissions/${currentDetailSubmissionId}/questions`));
-  await set(questionRef, { type, text, options, createdAt: Date.now() });
+  // Same save path as the model page, so on an admin upload (approved and
+  // published instantly) each question is re-published to the app too.
+  const questionKey = push(dbRef(db, `${ROOT}/submissions/${currentDetailSubmissionId}/questions`)).key;
+  await applyContentEdit(currentDetailSubmissionId,
+    { [`questions/${questionKey}`]: { type, text, options, createdAt: Date.now() } });
 
   if (msgEl) msgEl.textContent = "";
   const textInput = byId("uploadQuestionTextInput");
@@ -584,7 +638,7 @@ async function addQuestionToUploadModal() {
 async function deleteQuestionFromUploadModal(questionId) {
   if (!currentDetailSubmissionId) return;
   try {
-    await set(dbRef(db, `${ROOT}/submissions/${currentDetailSubmissionId}/questions/${questionId}`), null);
+    await applyContentEdit(currentDetailSubmissionId, { [`questions/${questionId}`]: null });
     const snap = await get(dbRef(db, `${ROOT}/submissions/${currentDetailSubmissionId}/questions`));
     renderQuestionsInUploadModal(snap.exists() ? snap.val() : {});
     const cached = submissionsCache.find((x) => x.id === currentDetailSubmissionId);
@@ -658,7 +712,9 @@ onAuthStateChanged(auth, async (user) => {
 
 async function refreshAll() {
   await Promise.allSettled([
-    loadMySubmissions(),
+    // Categories after submissions: the legacy-column migration and the
+    // category filter both read submissionsCache.
+    loadMySubmissions().then(loadCategories),
     loadAnalytics(),
     loadPublishedModels(),
     loadDispatchData(),
@@ -666,8 +722,7 @@ async function refreshAll() {
     loadPartnerSubscribersForUpload(),
     loadPartnerDeliveryData(),
     loadPortalNotifications(),
-    loadMailingList(),
-    loadCategories()
+    loadMailingList()
   ]);
 }
 
@@ -769,6 +824,9 @@ async function generateAndUploadThumbnail(submissionId, businessId, glbFile) {
         if (modelSnap.exists()) {
           await update(modelRef, { thumbnailUrl: thumbUrl });
           console.log("[Cornucopia] ✓ thumbnailUrl mirrored to models record");
+          // ...and to the public share-page copy, which exists exactly when
+          // the model record does (see publishSharedModel).
+          await update(dbRef(db, `${ROOT}/shared_models/${subSnap.val().modelKey}`), { thumbnailUrl: thumbUrl });
         }
       }
     } catch (mirrorErr) {
@@ -793,18 +851,12 @@ async function generateAndUploadThumbnail(submissionId, businessId, glbFile) {
   }
 }
 
-/** Show thumbnail image in the model page preview card, or fall back to placeholder. */
+/** A thumbnail that finishes rendering while its model page is open drops
+ * straight into the phone preview. */
 function renderModelPageThumbnail(url) {
-  const img = byId("modelPageThumbnail");
-  const placeholder = byId("modelPagePreviewPlaceholder");
-  if (url && img) {
-    img.src = url;
-    img.classList.remove("hidden");
-    if (placeholder) placeholder.style.display = "none";
-  } else {
-    if (img) img.classList.add("hidden");
-    if (placeholder) placeholder.style.display = "";
-  }
+  if (!_modelPageItem || !url) return;
+  _modelPageItem.thumbnailUrl = url;
+  renderModelPagePreview();
 }
 
 async function uploadModel() {
@@ -976,16 +1028,23 @@ function bindSubmissionActionButtons(container) {
 async function runSubmissionAction(btn) {
   const id = btn.getAttribute("data-id");
   const action = btn.getAttribute("data-action");
+  // An approved model a partner has since edited: approve publishes the
+  // edit, reject throws the edit away (archived) and keeps the live version.
+  const isUpdate = btn.getAttribute("data-status") === "updated";
 
   const confirmMessages = {
-    approve: "Approve this submission and make it ready to push?",
-    reject: "Reject this submission? This cannot be undone.",
+    approve: isUpdate
+      ? "Approve these changes? They go live in the app straight away and the previous version is kept in history."
+      : "Approve this submission and make it ready to push?",
+    reject: isUpdate
+      ? "Reject these changes? The model goes back to its approved version (the proposal is kept in history) and the partner can send it again."
+      : "Reject this submission? This cannot be undone.",
     push: "Push this model to the app for users to see?"
   };
   const loadingLabels = { approve: "Approving…", reject: "Rejecting…", push: "Pushing to app…" };
   const successMessages = {
-    approve: "✓ Submission approved.",
-    reject: "✓ Submission rejected.",
+    approve: isUpdate ? "✓ Changes approved and published." : "✓ Submission approved.",
+    reject: isUpdate ? "✓ Changes rejected; approved version kept." : "✓ Submission rejected.",
     push: "🚀 Model pushed to the app!"
   };
 
@@ -1000,6 +1059,8 @@ async function runSubmissionAction(btn) {
   try {
     if (action === "approve") {
       await updateSubmissionStatus(id, "approved");
+    } else if (action === "reject" && isUpdate) {
+      await rejectProposedChanges(id);
     } else if (action === "reject") {
       await updateSubmissionStatus(id, "rejected");
     } else if (action === "push") {
@@ -1013,8 +1074,12 @@ async function runSubmissionAction(btn) {
         const partnerUid = sub.uploaderUid;
         const modelName = sub.displayName || sub.fileName || "your model";
         const partnerMessages = {
-          approve: `✅ "${modelName}" has been approved!`,
-          reject: `❌ "${modelName}" was not approved this time.`,
+          approve: isUpdate
+            ? `✅ Your changes to "${modelName}" were approved and are live. You can send it to users again.`
+            : `✅ "${modelName}" has been approved!`,
+          reject: isUpdate
+            ? `↩️ Your changes to "${modelName}" weren't approved, so it's back to the approved version. You can send it to users again.`
+            : `❌ "${modelName}" was not approved this time.`,
           push: `🚀 "${modelName}" is now live in the app!`
         };
         if (partnerUid && partnerMessages[action]) {
@@ -1064,11 +1129,10 @@ async function updateSubmissionStatus(id, status) {
   // (targeted). Only admins can approve, and only admins may write
   // cornucopia/models per the RTDB rules, so this has to happen here rather
   // than in the partner-facing send actions themselves.
+  // promoteToLive also pins this content as liveVersion and, when approving
+  // a partner's edit, archives the version it replaces into history.
   if (status === "approved") {
-    const submissionSnap = await get(dbRef(db, `${ROOT}/submissions/${id}`));
-    if (submissionSnap.exists()) {
-      await ensurePublishedModel(id, { id, ...submissionSnap.val() });
-    }
+    await promoteToLive(id);
   }
 
   const submissionSnap2 = await get(dbRef(db, `${ROOT}/submissions/${id}`));
@@ -1114,24 +1178,38 @@ async function ensurePublishedModel(submissionId, item) {
     name: item.displayName || stripGlbExtension(item.fileName || modelKey),
     modelNamee: modelKey,
     picPathh: item.picPathh || existingModel.picPathh || modelKey,
-    description: item.description || existingModel.description || "",
+    // Content fields come straight from the approved submission (no
+    // fallback to the old record), so a field the partner cleared really
+    // clears in the app.
+    description: item.description || "",
     question: await resolveSubmissionQuestion(submissionId, item),
     // Lets the apps fetch the submission's full typed question set
     // (yes/no, multiple_choice, rating, open_text) instead of just the
     // flattened text string above.
     submissionId,
+    // The approved question set, frozen here: the app reads these rather
+    // than the submission's working copy, so a partner's unapproved edit
+    // never reaches users.
+    questions: item.questions || null,
+    // Tells the app the field above is authoritative even when empty (RTDB
+    // drops empty objects), so it never falls back to the working copy.
+    questionsPublished: true,
     storagePath: item.storagePath || "",
     businessName: item.businessName || existingModel.businessName || "",
-    category: item.category || existingModel.category || null,
-    categoryName: item.categoryName || existingModel.categoryName || null,
-    brandValue: item.brandValue || existingModel.brandValue || null,
-    price: item.price || existingModel.price || null,
-    dealType: item.dealType || existingModel.dealType || "none",
-    ctaType: item.ctaType || existingModel.ctaType || "none",
-    ctaLink: item.ctaLink || existingModel.ctaLink || null,
+    // Already formatted for display ("GH₵2,000") so the app shows it as-is;
+    // the raw amount + code are alongside for anything that needs numbers.
+    brandValue: formatMoney(item.brandValue, item.currency) || null,
+    price: formatMoney(item.price, item.currency) || null,
+    currency: item.currency || null,
+    brandValueAmount: parseAmount(item.brandValue),
+    priceAmount: parseAmount(item.price),
+    dealType: item.dealType || "none",
+    ctaType: item.ctaType || "none",
+    ctaLink: item.ctaLink || null,
     // Newest-first ordering in the apps; keep the original date on re-push
     createdAt: existingModel.createdAt || Date.now(),
     data: {
+      ...(existingModel?.data || {}), // keep any counters the apps added
       sent: toInt(existingModel?.data?.sent, 0),
       opens: toInt(existingModel?.data?.opens, 0),
       saved: toInt(existingModel?.data?.saved, 0),
@@ -1142,12 +1220,72 @@ async function ensurePublishedModel(submissionId, item) {
   };
   const thumbUrl = item.thumbnailUrl || existingModel.thumbnailUrl;
   if (thumbUrl) mergedModel.thumbnailUrl = thumbUrl;
+  // Categories live in the category_models bridge table now, not on the model.
+  delete mergedModel.category;
+  delete mergedModel.categoryName;
 
   await set(modelRef, mergedModel);
   if (!item.modelKey) {
     await update(dbRef(db, `${ROOT}/submissions/${submissionId}`), { modelKey });
   }
+  await publishSharedModel(modelKey, mergedModel);
   return modelKey;
+}
+
+/**
+ * The public, read-only copy of a published model behind every share link
+ * (m.html?id={modelKey}). Holds only what a stranger opening a shared link
+ * should see - no stats, no submission/partner ids - and is the one path the
+ * database rules make readable without signing in. glbUrl is a tokened
+ * download URL, so the share page (and Android's Scene Viewer / iOS Quick
+ * Look) can fetch the model without a Firebase login.
+ * Never fails the publish it rides on: a missing share page is worth a
+ * warning, not a failed approval.
+ */
+async function publishSharedModel(modelKey, model) {
+  try {
+    let glbUrl = null;
+    try {
+      const glbPath = model.storagePath || `model/${model.modelNamee || modelKey}.glb`;
+      glbUrl = await getDownloadURL(ref(storage, glbPath));
+    } catch (e) {
+      console.warn(`[Cornucopia] No public 3D file URL for ${modelKey} (share page shows the picture only):`, e.message);
+    }
+    await set(dbRef(db, `${ROOT}/shared_models/${modelKey}`), {
+      name: model.name || modelKey,
+      description: model.description || null,
+      businessName: model.businessName || null,
+      thumbnailUrl: model.thumbnailUrl || null,
+      glbUrl,
+      brandValue: model.brandValue || null,
+      price: model.price || null,
+      dealType: model.dealType || "none",
+      ctaType: model.ctaType || "none",
+      ctaLink: model.ctaLink || null,
+      updatedAt: Date.now()
+    });
+  } catch (err) {
+    console.warn("[Cornucopia] Could not publish share page data:", err);
+    showToast(/permission/i.test(String(err.message || err))
+      ? "Published, but the share page needs the latest database rules (shared_models)."
+      : `Published, but the share page could not be updated: ${err.message || err}`, "error");
+  }
+}
+
+/** Share pages for models published before shared_models existed. Runs on
+ * admin load; only writes for models that don't have one yet. */
+async function backfillSharedModels(models) {
+  let existing = {};
+  try {
+    const snap = await get(dbRef(db, `${ROOT}/shared_models`));
+    existing = snap.exists() ? snap.val() : {};
+  } catch (err) {
+    console.warn("[Cornucopia] Share pages not backfilled (publish the latest database rules):", err.message);
+    return;
+  }
+  for (const m of models) {
+    if (!existing[m.id] && m.name) await publishSharedModel(m.id, m);
+  }
 }
 
 async function pushSubmissionToApp(submissionId, options = {}) {
@@ -1294,6 +1432,7 @@ async function loadPublishedModels() {
       `;
       publishedModelsBody.appendChild(tr);
     });
+    backfillSharedModels(models); // background; only fills gaps
   } catch (err) {
     dispatchMessage.textContent = `Could not read models list: ${err.message || err}`;
   }
@@ -1851,25 +1990,95 @@ async function handleMailingListUpload() {
   }
 }
 
-// ─── Category management (Epic 4, portal-only per R-4.1) ───────────────────
+/// ─── Category management (Epic 4, portal-only per R-4.1) ───────────────────
 // The app has no catalog-browse screen today (users only ever see models
 // explicitly assigned to them), so there's nowhere for an "empty category"
 // to show up on the mobile side (R-4.2) — categories are admin/portal
 // organization for now. The category filter dropdown only lists categories
 // that currently have at least one model, which is the portal-side
 // equivalent of that rule.
+//
+// Links live in their own bridge table, not as a column on the model:
+//   cornucopia/category_models/{categoryId}/{submissionId}
+//     = { categoryId, categoryName, modelId, modelKey, modelName, assignedAt, assignedBy }
+// One row per link, so a model can sit in several categories; unlinking
+// deletes that one row, and deleting a category deletes its whole branch
+// (every link to it) in the same write as the category itself.
+
+const CATEGORY_LINKS_PATH = `${ROOT}/category_models`;
 
 async function loadCategories() {
   if (normalizeRole(currentProfile?.role) !== "admin") return;
   try {
-    const snap = await get(dbRef(db, `${ROOT}/categories`));
-    categoriesCache = snap.exists() ? snap.val() : {};
+    const [catSnap, linkSnap] = await Promise.all([
+      get(dbRef(db, `${ROOT}/categories`)),
+      get(dbRef(db, CATEGORY_LINKS_PATH))
+    ]);
+    categoriesCache = catSnap.exists() ? catSnap.val() : {};
+    categoryLinksCache = linkSnap.exists() ? linkSnap.val() : {};
+    await migrateLegacyCategoryColumns();
     renderCategoriesList();
     renderCategoryFilterOptions();
     if (_modelPageItem) renderModelPageCategory(_modelPageItem);
   } catch (err) {
-    if (categoriesMessage) categoriesMessage.textContent = `Could not load categories: ${err.message || err}`;
+    if (categoriesMessage) {
+      categoriesMessage.textContent = /permission/i.test(String(err.message || err))
+        ? "Could not load categories: publish the latest web-portal/database.rules.json (it adds category_models)."
+        : `Could not load categories: ${err.message || err}`;
+    }
   }
+}
+
+/** One-time move of the old single-category column (submission.category /
+ * categoryName, mirrored on the published model) into the bridge table. Runs
+ * on every admin load but only does work while legacy columns remain. */
+async function migrateLegacyCategoryColumns() {
+  const legacy = submissionsCache.filter((s) => s.category);
+  if (!legacy.length) return;
+  const updates = {};
+  legacy.forEach((s) => {
+    if (categoriesCache[s.category] && !categoryLinksCache[s.category]?.[s.id]) {
+      updates[`${CATEGORY_LINKS_PATH}/${s.category}/${s.id}`] =
+        categoryLinkRow(s.category, s, s.createdAt || Date.now());
+    }
+    updates[`${ROOT}/submissions/${s.id}/category`] = null;
+    updates[`${ROOT}/submissions/${s.id}/categoryName`] = null;
+    if (s.modelKey) {
+      updates[`${ROOT}/models/${s.modelKey}/category`] = null;
+      updates[`${ROOT}/models/${s.modelKey}/categoryName`] = null;
+    }
+  });
+  await update(dbRef(db), updates);
+  // Published-model paths may not exist for never-pushed submissions; the
+  // null writes above are harmless no-ops for those.
+  legacy.forEach((s) => {
+    if (categoriesCache[s.category]) {
+      categoryLinksCache[s.category] = categoryLinksCache[s.category] || {};
+      categoryLinksCache[s.category][s.id] = categoryLinkRow(s.category, s, s.createdAt || Date.now());
+    }
+    delete s.category;
+    delete s.categoryName;
+  });
+}
+
+function categoryLinkRow(categoryId, item, assignedAt) {
+  return {
+    categoryId,
+    categoryName: categoriesCache[categoryId]?.name || "",
+    modelId: item.id,
+    modelKey: item.modelKey || null,
+    modelName: item.displayName || item.fileName || item.id,
+    assignedAt: assignedAt || Date.now(),
+    assignedBy: currentUser?.uid || null
+  };
+}
+
+function categoryLinkCount(categoryId) {
+  return Object.keys(categoryLinksCache[categoryId] || {}).length;
+}
+
+function categoryIdsForModel(submissionId) {
+  return Object.keys(categoryLinksCache).filter((cid) => categoryLinksCache[cid]?.[submissionId]);
 }
 
 async function addCategory() {
@@ -1894,29 +2103,24 @@ async function addCategory() {
   }
 }
 
+/** Deletes the category and every bridge row pointing at it, atomically.
+ * The models themselves are untouched - they just stop being in it. */
 async function deleteCategory(categoryId, name) {
-  const count = submissionsCache.filter((s) => s.category === categoryId).length;
+  const count = categoryLinkCount(categoryId);
   const confirmMsg = count > 0
-    ? `Delete "${name}"? ${count} model(s) using it will become uncategorized.`
+    ? `Delete "${name}"? It will be unlinked from ${count} model${count === 1 ? "" : "s"}. The models themselves are not changed.`
     : `Delete "${name}"?`;
   if (!confirm(confirmMsg)) return;
 
   try {
-    const updates = {};
-    submissionsCache.forEach((s) => {
-      if (s.category === categoryId) {
-        updates[`${ROOT}/submissions/${s.id}/category`] = null;
-        updates[`${ROOT}/submissions/${s.id}/categoryName`] = null;
-        if (s.modelKey) {
-          updates[`${ROOT}/models/${s.modelKey}/category`] = null;
-          updates[`${ROOT}/models/${s.modelKey}/categoryName`] = null;
-        }
-      }
+    await update(dbRef(db), {
+      [`${ROOT}/categories/${categoryId}`]: null,
+      [`${CATEGORY_LINKS_PATH}/${categoryId}`]: null
     });
-    updates[`${ROOT}/categories/${categoryId}`] = null;
-    await update(dbRef(db), updates);
     if (categoriesMessage) categoriesMessage.textContent = `Deleted "${name}".`;
-    await Promise.all([loadCategories(), loadMySubmissions()]);
+    if (currentCategoryFilter === categoryId) currentCategoryFilter = "";
+    await loadCategories();
+    renderSubmissionRows();
   } catch (err) {
     if (categoriesMessage) categoriesMessage.textContent = `Could not delete category: ${err.message || err}`;
   }
@@ -1931,7 +2135,7 @@ function renderCategoriesList() {
     return;
   }
   entries.forEach(([id, cat]) => {
-    const count = submissionsCache.filter((s) => s.category === id).length;
+    const count = categoryLinkCount(id);
     const row = document.createElement("div");
     row.className = "user-row";
     row.innerHTML = `
@@ -1946,7 +2150,7 @@ function renderCategoriesList() {
 function renderCategoryFilterOptions() {
   if (!categoryFilterSelect) return;
   const nonEmpty = Object.entries(categoriesCache)
-    .filter(([id]) => submissionsCache.some((s) => s.category === id))
+    .filter(([id]) => categoryLinkCount(id) > 0)
     .sort((a, b) => (a[1].name || "").localeCompare(b[1].name || ""));
 
   const previous = categoryFilterSelect.value;
@@ -1961,46 +2165,56 @@ function renderCategoryFilterOptions() {
   }
 }
 
-/** Category assignment on the model detail page — the one place a submission
- * actually gets tagged; the categories card above only manages the list. */
+/** Category links on the model detail page - one checkbox per category, so a
+ * model can belong to several; the categories card above only manages the list. */
 function renderModelPageCategory(item) {
   if (normalizeRole(currentProfile?.role) !== "admin") return;
-  const select = byId("modelPageCategorySelect");
+  const list = byId("modelPageCategoryList");
   const msg = byId("modelPageCategoryMessage");
-  if (!select) return;
+  if (!list) return;
 
+  const linked = new Set(categoryIdsForModel(item.id));
   const options = Object.entries(categoriesCache).sort((a, b) => (a[1].name || "").localeCompare(b[1].name || ""));
-  select.innerHTML = '<option value="">Uncategorized</option>'
-    + options.map(([id, cat]) => `<option value="${id}">${escapeHtml(cat.name)}</option>`).join("");
-  select.value = item.category || "";
+  list.innerHTML = options.length
+    ? options.map(([id, cat]) => `
+        <label><input type="checkbox" value="${escapeHtml(id)}" ${linked.has(id) ? "checked" : ""} /> ${escapeHtml(cat.name)}</label>`).join("")
+    : `<span class="muted">No categories yet - add them under Manage Uploads.</span>`;
   if (msg) msg.textContent = "";
 }
 
+/** Writes only the difference: a row per newly linked category, a null (row
+ * delete) per unlinked one - all in one multi-path update. */
 async function saveModelPageCategory() {
   const item = _modelPageItem;
   if (!item?.id) return;
-  const select = byId("modelPageCategorySelect");
   const msg = byId("modelPageCategoryMessage");
-  const categoryId = select?.value || "";
-  const categoryName = categoryId ? (categoriesCache[categoryId]?.name || "") : "";
+  const checked = new Set([...document.querySelectorAll("#modelPageCategoryList input:checked")].map((c) => c.value));
+  const current = new Set(categoryIdsForModel(item.id));
+
+  const updates = {};
+  checked.forEach((cid) => {
+    if (!current.has(cid)) updates[`${CATEGORY_LINKS_PATH}/${cid}/${item.id}`] = categoryLinkRow(cid, item);
+  });
+  current.forEach((cid) => {
+    if (!checked.has(cid)) updates[`${CATEGORY_LINKS_PATH}/${cid}/${item.id}`] = null;
+  });
+  if (!Object.keys(updates).length) {
+    if (msg) msg.textContent = "No changes.";
+    return;
+  }
 
   if (msg) msg.textContent = "Saving...";
   try {
-    await update(dbRef(db, `${ROOT}/submissions/${item.id}`), {
-      category: categoryId || null,
-      categoryName: categoryName || null
-    });
-    if (item.modelKey) {
-      const modelSnap = await get(dbRef(db, `${ROOT}/models/${item.modelKey}`));
-      if (modelSnap.exists()) {
-        await update(dbRef(db, `${ROOT}/models/${item.modelKey}`), {
-          category: categoryId || null,
-          categoryName: categoryName || null
-        });
+    await update(dbRef(db), updates);
+    Object.entries(updates).forEach(([path, row]) => {
+      const [cid, sid] = path.split("/").slice(-2);
+      if (row) {
+        categoryLinksCache[cid] = categoryLinksCache[cid] || {};
+        categoryLinksCache[cid][sid] = row;
+      } else if (categoryLinksCache[cid]) {
+        delete categoryLinksCache[cid][sid];
       }
-    }
-    const cached = submissionsCache.find((s) => s.id === item.id);
-    if (cached) { cached.category = categoryId || null; cached.categoryName = categoryName || null; }
+    });
     if (msg) msg.textContent = "Saved.";
     renderCategoriesList();
     renderCategoryFilterOptions();
@@ -2010,18 +2224,205 @@ async function saveModelPageCategory() {
   }
 }
 
+// ─── Editing a listing + re-approval (versioning) ───────────────────────────
+// The submission's own fields are the working copy. Once a model is approved,
+// liveVersion holds the content that is actually published, and every version
+// that stops being live (replaced by an approved edit, or a proposed edit that
+// was rejected) is appended to submissions/{id}/history - nothing is ever
+// overwritten, so responses collected under an older version stay explainable.
+
+function contentSnapshot(item) {
+  const snap = {};
+  VERSIONED_FIELDS.forEach((f) => {
+    const v = item?.[f];
+    snap[f] = v === undefined || v === "" ? null : v;
+  });
+  return snap;
+}
+
+/** JSON with sorted keys, so two snapshots compare equal regardless of the
+ * order RTDB (or local code) happened to put their keys in. */
+function stableStringify(value) {
+  if (value === null || typeof value !== "object") return JSON.stringify(value ?? null);
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  return `{${Object.keys(value).sort()
+    .filter((k) => value[k] !== null && value[k] !== undefined)
+    .map((k) => `${JSON.stringify(k)}:${stableStringify(value[k])}`).join(",")}}`;
+}
+
+function snapshotsEqual(a, b) {
+  return stableStringify(contentSnapshot(a)) === stableStringify(contentSnapshot(b));
+}
+
+/**
+ * The single write path for every content edit on the model page (listing,
+ * pricing, CTA, questions, details). `changes` uses paths relative to the
+ * submission ("description", "questions/{qId}", ...).
+ *  - Partner editing an approved model: the edit is saved as a proposal,
+ *    status flips to "updated" (sending to users pauses), the currently live
+ *    content is pinned in liveVersion, and admins are notified.
+ *  - Admin editing an approved model: goes live immediately (re-published),
+ *    with the replaced version archived in history.
+ *  - Anything not yet approved: a plain save.
+ * Returns { reapproval: bool } so callers can word their confirmation.
+ */
+async function applyContentEdit(submissionId, changes) {
+  const isAdmin = normalizeRole(currentProfile?.role) === "admin";
+  const subRef = dbRef(db, `${ROOT}/submissions/${submissionId}`);
+  const beforeSnap = await get(subRef);
+  if (!beforeSnap.exists()) throw new Error("This model no longer exists.");
+  const before = { id: submissionId, ...beforeSnap.val() };
+  const isLive = before.status === "approved" || before.status === "updated";
+
+  const payload = { ...changes };
+  let reapproval = false;
+  if (!isAdmin && isLive) {
+    if (!before.liveVersion) {
+      payload.liveVersion = { ...contentSnapshot(before), approvedAt: before.approvedAt || null, approvedBy: before.decisionBy || null };
+    }
+    payload.status = "updated";
+    payload.updatedAt = Date.now();
+    payload.updatedBy = currentUser.uid;
+    reapproval = true;
+  }
+  await update(subRef, payload);
+
+  if (reapproval && before.status === "approved") {
+    const name = before.displayName || before.fileName || "A model";
+    const partnerName = currentProfile.businessName || currentProfile.name || "A partner";
+    notifyAllAdmins(`✏️ ${partnerName} edited "${name}" - it needs re-approval.`, "info", "uploads", "pending");
+    sendPortalNotification(currentUser.uid,
+      `⏸ "${name}" is paused for re-approval after your edit. You can send it to users again once it's approved.`, "info");
+  }
+
+  if (isAdmin && before.status === "approved" && before.modelKey) {
+    // Admin edits skip review - publish straight away so the app matches.
+    const published = await get(dbRef(db, `${ROOT}/models/${before.modelKey}`));
+    if (published.exists()) await promoteToLive(submissionId);
+  }
+
+  await refreshCachedSubmission(submissionId);
+  return { reapproval };
+}
+
+/** Re-reads one submission into submissionsCache (and the open model page),
+ * re-rendering the uploads table; reopens the model page if its status
+ * changed, since that changes which cards and actions it shows. */
+async function refreshCachedSubmission(submissionId) {
+  const snap = await get(dbRef(db, `${ROOT}/submissions/${submissionId}`));
+  if (!snap.exists()) return null;
+  const fresh = { id: submissionId, ...snap.val() };
+  const idx = submissionsCache.findIndex((s) => s.id === submissionId);
+  if (idx >= 0) submissionsCache[idx] = { ...submissionsCache[idx], ...fresh };
+  renderSubmissionRows();
+  if (_modelPageItem?.id === submissionId) {
+    const statusChanged = _modelPageItem.status !== fresh.status;
+    _modelPageItem = idx >= 0 ? submissionsCache[idx] : fresh;
+    if (statusChanged) await openModelPage(_modelPageItem);
+    else renderVersioningCards(_modelPageItem);
+  }
+  return fresh;
+}
+
+/** Makes the submission's current content the live version: archives the
+ * previous live version into history (if it differs), records the new
+ * liveVersion, publishes the catalog record, and refreshes the denormalized
+ * model name on its category links. Admin-only (writes cornucopia/models). */
+async function promoteToLive(submissionId) {
+  const subRef = dbRef(db, `${ROOT}/submissions/${submissionId}`);
+  const snap = await get(subRef);
+  if (!snap.exists()) return;
+  const item = { id: submissionId, ...snap.val() };
+  const now = Date.now();
+  const updates = {};
+
+  if (item.liveVersion && !snapshotsEqual(item.liveVersion, item)) {
+    const histRef = push(dbRef(db, `${ROOT}/submissions/${submissionId}/history`));
+    updates[`history/${histRef.key}`] = {
+      outcome: "superseded",
+      content: contentSnapshot(item.liveVersion),
+      liveFrom: item.liveVersion.approvedAt || null,
+      liveUntil: now,
+      archivedBy: currentUser.uid
+    };
+  }
+  updates.liveVersion = { ...contentSnapshot(item), approvedAt: now, approvedBy: currentUser.uid };
+  updates.updatedAt = null;
+  updates.updatedBy = null;
+  await update(subRef, updates);
+  await ensurePublishedModel(submissionId, item);
+
+  const linkUpdates = {};
+  Object.keys(categoryLinksCache).forEach((cid) => {
+    if (categoryLinksCache[cid]?.[submissionId]) {
+      linkUpdates[`${CATEGORY_LINKS_PATH}/${cid}/${submissionId}/modelName`] = item.displayName || item.fileName || submissionId;
+    }
+  });
+  if (Object.keys(linkUpdates).length) {
+    try { await update(dbRef(db), linkUpdates); } catch (e) { console.warn("Could not refresh category link names:", e); }
+  }
+}
+
+/** Admin turns down a partner's edit: the proposal is archived (outcome
+ * "rejected"), the working copy reverts to the live version, and the model
+ * goes back to approved so the partner can send it again. */
+async function rejectProposedChanges(submissionId) {
+  const subRef = dbRef(db, `${ROOT}/submissions/${submissionId}`);
+  const snap = await get(subRef);
+  if (!snap.exists()) return;
+  const item = snap.val();
+  if (!item.liveVersion) {
+    // Nothing to revert to (shouldn't happen) - fall back to a plain re-approve.
+    await update(subRef, { status: "approved", updatedAt: null, updatedBy: null });
+    return;
+  }
+  const histRef = push(dbRef(db, `${ROOT}/submissions/${submissionId}/history`));
+  const updates = {
+    [`history/${histRef.key}`]: {
+      outcome: "rejected",
+      content: contentSnapshot(item),
+      proposedAt: item.updatedAt || null,
+      proposedBy: item.updatedBy || null,
+      rejectedAt: Date.now(),
+      archivedBy: currentUser.uid
+    },
+    status: "approved",
+    decisionBy: currentUser.uid,
+    updatedAt: null,
+    updatedBy: null
+  };
+  VERSIONED_FIELDS.forEach((f) => { updates[f] = item.liveVersion[f] ?? null; });
+  await update(subRef, updates);
+}
+
+// ─── Listing, pricing, CTA ───────────────────────────────────────────────────
+
 function readDealType() {
   const checked = document.querySelector('input[name="modelPageDealType"]:checked');
   return checked ? checked.value : "none";
 }
 
+function renderModelPageListing(item) {
+  const nameInput = byId("modelPageNameInput");
+  const descInput = byId("modelPageDescriptionInput");
+  if (nameInput) nameInput.value = item.displayName || stripGlbExtension(item.fileName || "");
+  if (descInput) descInput.value = item.description || "";
+  const msg = byId("modelPageListingMessage");
+  if (msg) msg.textContent = "";
+}
+
 function renderModelPagePricingAndCta(item) {
   const brandInput = byId("modelPageBrandValueInput");
   const priceInput = byId("modelPagePriceInput");
+  const currencySelect = byId("modelPageCurrencySelect");
   const ctaTypeSelect = byId("modelPageCtaTypeSelect");
   const ctaLinkInput = byId("modelPageCtaLinkInput");
-  if (brandInput) brandInput.value = item.brandValue || "";
-  if (priceInput) priceInput.value = item.price || "";
+  // Legacy values ("$1,200") load as their number; currency defaults to USD
+  // until the partner picks one and saves.
+  const amountText = (v) => { const n = parseAmount(v); return n === null ? (v || "") : String(n); };
+  if (brandInput) brandInput.value = amountText(item.brandValue);
+  if (priceInput) priceInput.value = amountText(item.price);
+  if (currencySelect) currencySelect.value = item.currency || DEFAULT_CURRENCY;
   const dealType = item.dealType || "none";
   document.querySelectorAll('input[name="modelPageDealType"]').forEach((r) => { r.checked = r.value === dealType; });
   if (ctaTypeSelect) ctaTypeSelect.value = item.ctaType || "none";
@@ -2032,29 +2433,59 @@ function renderModelPagePricingAndCta(item) {
   if (ctaMsg) ctaMsg.textContent = "";
 }
 
-/** Pricing/CTA only ever write to the submission, same as Description - they
- * surface on the live app after the next Approve/Push, not instantly. That
- * matches how every other partner-editable field already behaves here, and
- * (unlike Category, which is admin-only) avoids a rules change: partners have
- * no write access to the published cornucopia/models/{modelKey} record. */
+/** Confirmation copy shared by every content save on the model page. */
+function editSavedMessage(result) {
+  const isAdmin = normalizeRole(currentProfile?.role) === "admin";
+  if (result.reapproval) return "Saved and sent for re-approval. Sending to users is paused until an admin approves it; users keep seeing the approved version until then.";
+  if (isAdmin && _modelPageItem?.status === "approved") return "Saved and published to the app.";
+  return "Saved.";
+}
+
+async function saveModelPageListing() {
+  const item = _modelPageItem;
+  if (!item?.id) return;
+  const msg = byId("modelPageListingMessage");
+  const displayName = (byId("modelPageNameInput")?.value || "").trim();
+  const description = (byId("modelPageDescriptionInput")?.value || "").trim();
+  if (!displayName) { if (msg) msg.textContent = "Enter a name."; return; }
+  if (displayName === (item.displayName || "") && description === (item.description || "")) {
+    if (msg) msg.textContent = "No changes.";
+    return;
+  }
+
+  if (msg) msg.textContent = "Saving...";
+  try {
+    const result = await applyContentEdit(item.id, { displayName, description: description || null });
+    const titleEl = byId("modelPageTitle");
+    if (titleEl) titleEl.textContent = displayName;
+    if (msg) msg.textContent = editSavedMessage(result);
+  } catch (err) {
+    if (msg) msg.textContent = `Could not save: ${err.message || err}`;
+  }
+}
+
 async function saveModelPagePricing() {
   const item = _modelPageItem;
   if (!item?.id) return;
   const msg = byId("modelPagePricingMessage");
-  const brandValue = (byId("modelPageBrandValueInput")?.value || "").trim();
-  const price = (byId("modelPagePriceInput")?.value || "").trim();
+  const brandRaw = (byId("modelPageBrandValueInput")?.value || "").trim();
+  const priceRaw = (byId("modelPagePriceInput")?.value || "").trim();
+  const currency = byId("modelPageCurrencySelect")?.value || DEFAULT_CURRENCY;
   const dealType = readDealType();
+
+  for (const [label, raw] of [["Brand value", brandRaw], ["Price", priceRaw]]) {
+    if (raw && (parseAmount(raw) === null || parseAmount(raw) < 0)) {
+      if (msg) msg.textContent = `${label} must be a number, e.g. 1200 or 899.99.`;
+      return;
+    }
+  }
+  const brandValue = brandRaw ? String(parseAmount(brandRaw)) : null;
+  const price = priceRaw ? String(parseAmount(priceRaw)) : null;
 
   if (msg) msg.textContent = "Saving...";
   try {
-    await update(dbRef(db, `${ROOT}/submissions/${item.id}`), {
-      brandValue: brandValue || null,
-      price: price || null,
-      dealType
-    });
-    const cached = submissionsCache.find((s) => s.id === item.id);
-    if (cached) { cached.brandValue = brandValue || null; cached.price = price || null; cached.dealType = dealType; }
-    if (msg) msg.textContent = "Saved. Push to App to update the live listing.";
+    const result = await applyContentEdit(item.id, { brandValue, price, currency, dealType });
+    if (msg) msg.textContent = editSavedMessage(result);
   } catch (err) {
     if (msg) msg.textContent = `Could not save: ${err.message || err}`;
   }
@@ -2080,18 +2511,200 @@ async function saveModelPageCta() {
 
   if (msg) msg.textContent = "Saving...";
   try {
-    await update(dbRef(db, `${ROOT}/submissions/${item.id}`), {
-      ctaType,
-      ctaLink: ctaType === "none" ? null : ctaLink
-    });
-    const cached = submissionsCache.find((s) => s.id === item.id);
-    if (cached) { cached.ctaType = ctaType; cached.ctaLink = ctaType === "none" ? null : ctaLink; }
-    if (msg) msg.textContent = "Saved. Push to App to update the live listing.";
+    const result = await applyContentEdit(item.id, { ctaType, ctaLink: ctaType === "none" ? null : ctaLink });
+    if (msg) msg.textContent = editSavedMessage(result);
   } catch (err) {
     if (msg) msg.textContent = `Could not save: ${err.message || err}`;
   }
 }
 
+// ─── Phone preview ───────────────────────────────────────────────────────────
+
+/** HTML for a scaled replica of the app's Product Details screen (same
+ * layout, same reference-pixel sizes - see .phone in styles.css), so partners
+ * can judge how much description fits before anything ships. */
+function buildPhonePreviewHtml({ name, description, thumbnailUrl, currency, brandValue, price, dealType, ctaType, ctaLink }) {
+  const priceLabel = dealType === "discount" ? "Price (Discount)" : dealType === "bogo" ? "Price (BOGO)" : "Price";
+  const cards = [
+    brandValue ? `<div class="phone-info"><small>Brand Value</small><strong>${escapeHtml(formatMoney(brandValue, currency))}</strong></div>` : "",
+    price ? `<div class="phone-info"><small>${priceLabel}</small><strong>${escapeHtml(formatMoney(price, currency))}</strong></div>` : ""
+  ].join("");
+  const hasCta = ctaType && ctaType !== "none" && ctaLink;
+  return `
+    <div class="phone" aria-label="Preview of the app's product screen">
+      <div class="phone-screen">
+        <div class="phone-hero">
+          ${thumbnailUrl ? `<img src="${escapeHtml(thumbnailUrl)}" alt="" />` : `<span class="phone-hero-empty">3D MODEL</span>`}
+        </div>
+        <div class="phone-back">&lt;</div>
+        <div class="phone-sheet">
+          <div class="phone-name">${escapeHtml(name || "Product name")}</div>
+          <div class="phone-desc">${escapeHtml(description || "")}</div>
+          <div class="phone-cards">${cards}</div>
+          <div class="phone-btn phone-ar">View in AR</div>
+          <div class="phone-row">
+            <div class="phone-btn phone-save">Save</div>
+            ${hasCta ? `<div class="phone-btn phone-cta">${escapeHtml(CTA_LABELS[ctaType] || "Learn more")}</div>` : ""}
+            <div class="phone-btn phone-share">Share</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="phone-note hidden">The description is longer than fits on the phone - the end is cut off.</p>`;
+}
+
+/** Renders into a container, then flags descriptions the phone would clip. */
+function mountPhonePreview(container, state) {
+  if (!container) return;
+  container.innerHTML = buildPhonePreviewHtml(state);
+  const desc = container.querySelector(".phone-desc");
+  const note = container.querySelector(".phone-note");
+  if (desc && note) {
+    const overflowing = desc.scrollHeight > desc.clientHeight + 1;
+    desc.classList.toggle("is-overflowing", overflowing);
+    note.classList.toggle("hidden", !overflowing);
+  }
+}
+
+function renderModelPagePreview() {
+  const item = _modelPageItem;
+  if (!item) return;
+  const desc = byId("modelPageDescriptionInput")?.value || "";
+  const count = byId("modelPageDescriptionCount");
+  if (count) count.textContent = String(desc.length);
+  mountPhonePreview(byId("modelPagePhonePreview"), {
+    name: byId("modelPageNameInput")?.value.trim(),
+    description: desc.trim(),
+    thumbnailUrl: item.thumbnailUrl,
+    currency: byId("modelPageCurrencySelect")?.value,
+    brandValue: (byId("modelPageBrandValueInput")?.value || "").trim(),
+    price: (byId("modelPagePriceInput")?.value || "").trim(),
+    dealType: readDealType(),
+    ctaType: byId("modelPageCtaTypeSelect")?.value,
+    ctaLink: (byId("modelPageCtaLinkInput")?.value || "").trim()
+  });
+}
+
+function renderUploadPreview() {
+  const file = byId("glbInput")?.files?.[0];
+  mountPhonePreview(byId("uploadPhonePreview"), {
+    name: (byId("displayNameInput")?.value || "").trim() || (file ? stripGlbExtension(file.name) : ""),
+    description: (byId("modelDescriptionInput")?.value || "").trim()
+  });
+}
+
+// ─── Re-approval diff + history cards ────────────────────────────────────────
+
+function describeQuestion(q) {
+  if (!q) return "";
+  const type = { yes_no: "Yes/No", multiple_choice: "Multiple choice", rating: "Rating", open_text: "Open text" }[q.type] || q.type;
+  const opts = Array.isArray(q.options) && q.options.length ? ` [${q.options.join(" / ")}]` : "";
+  return `${type}: ${q.text || ""}${opts}`;
+}
+
+function formatFieldValue(field, value, snapshot) {
+  if (value === null || value === undefined || value === "") return `<span class="muted">—</span>`;
+  if (field === "brandValue" || field === "price") return escapeHtml(formatMoney(value, snapshot.currency));
+  if (field === "ctaType") return escapeHtml(value === "none" ? "None" : (CTA_LABELS[value] || value));
+  if (field === "dealType") return escapeHtml({ none: "None", discount: "Discount", bogo: "BOGO" }[value] || value);
+  if (field === "attributes") {
+    return Object.entries(value).map(([k, v]) => `${escapeHtml(k)}: ${escapeHtml(String(v))}`).join("<br>");
+  }
+  if (field === "questions") {
+    return Object.values(value).map((q) => `<div class="diff-q">${escapeHtml(describeQuestion(q))}</div>`).join("");
+  }
+  return escapeHtml(String(value));
+}
+
+/** Questions are compared by id, so each one reads as added / removed /
+ * changed rather than the whole list just showing as "different". */
+function questionsDiffHtml(oldQs, newQs) {
+  oldQs = oldQs || {};
+  newQs = newQs || {};
+  const ids = [...new Set([...Object.keys(oldQs), ...Object.keys(newQs)])];
+  const before = [], after = [];
+  ids.forEach((id) => {
+    const o = oldQs[id], n = newQs[id];
+    if (o && !n) before.push(`<div class="diff-q diff-q-removed"><span class="diff-tag">Removed</span>${escapeHtml(describeQuestion(o))}</div>`);
+    else if (!o && n) after.push(`<div class="diff-q diff-q-added"><span class="diff-tag">Added</span>${escapeHtml(describeQuestion(n))}</div>`);
+    else if (stableStringify(o) !== stableStringify(n)) {
+      before.push(`<div class="diff-q">${escapeHtml(describeQuestion(o))}</div>`);
+      after.push(`<div class="diff-q"><span class="diff-tag">Changed</span>${escapeHtml(describeQuestion(n))}</div>`);
+    } else {
+      before.push(`<div class="diff-q">${escapeHtml(describeQuestion(o))}</div>`);
+      after.push(`<div class="diff-q">${escapeHtml(describeQuestion(n))}</div>`);
+    }
+  });
+  const empty = `<span class="muted">—</span>`;
+  return [before.join("") || empty, after.join("") || empty];
+}
+
+/** Side-by-side table of two content snapshots; changed rows highlighted.
+ * onlyChanged hides identical rows (used for history entries). */
+function diffTableHtml(oldSnap, newSnap, oldLabel, newLabel, onlyChanged = false) {
+  const a = contentSnapshot(oldSnap), b = contentSnapshot(newSnap);
+  const rows = VERSIONED_FIELDS.map((f) => {
+    const changed = stableStringify(a[f]) !== stableStringify(b[f]);
+    if (onlyChanged && !changed) return "";
+    const [oldHtml, newHtml] = f === "questions"
+      ? questionsDiffHtml(a[f], b[f])
+      : [formatFieldValue(f, a[f], a), formatFieldValue(f, b[f], b)];
+    return `<tr class="${changed ? "diff-changed" : "diff-same"}">
+      <td>${escapeHtml(FIELD_LABELS[f])}</td><td class="diff-old">${oldHtml}</td><td class="diff-new">${newHtml}</td></tr>`;
+  }).join("");
+  if (!rows) return `<p class="muted">No content differences.</p>`;
+  return `<table class="diff-table"><thead><tr><th>Field</th><th>${escapeHtml(oldLabel)}</th><th>${escapeHtml(newLabel)}</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function renderVersioningCards(item) {
+  const isAdmin = normalizeRole(currentProfile?.role) === "admin";
+
+  // Pending re-approval: side-by-side diff (+ approve/reject for admins).
+  const card = byId("modelPageChangesCard");
+  if (card) {
+    const pending = item.status === "updated" && item.liveVersion;
+    card.classList.toggle("hidden", !pending);
+    if (pending) {
+      const when = item.updatedAt ? ` ${formatRelativeDate(item.updatedAt)} (${formatTs(item.updatedAt)})` : "";
+      byId("modelPageChangesTitle").textContent = isAdmin ? "Changes awaiting your approval" : "Your changes are awaiting approval";
+      byId("modelPageChangesIntro").textContent = isAdmin
+        ? `${item.businessName || "The partner"} edited this approved model${when}. Users keep seeing the approved version until you approve; sending is paused meanwhile.`
+        : `Edited${when}. Users keep seeing the approved version (left) until an admin approves your changes, and sending to users is paused until then.`;
+      byId("modelPageChangesDiff").innerHTML = diffTableHtml(item.liveVersion, item, "Approved (live)", "Proposed")
+        + (isAdmin ? `
+          <div class="diff-actions">
+            <button class="success" type="button" data-id="${escapeHtml(item.id)}" data-action="approve" data-status="updated">Approve changes</button>
+            <button class="danger" type="button" data-id="${escapeHtml(item.id)}" data-action="reject" data-status="updated">Reject changes</button>
+          </div>` : "");
+    }
+  }
+
+  // Version history - every version that stopped being live, newest first.
+  const historyCard = byId("modelPageHistoryCard");
+  const list = byId("modelPageHistoryList");
+  if (historyCard && list) {
+    const entries = Object.entries(item.history || {})
+      .map(([id, h]) => ({ id, ...h, at: h.liveUntil || h.rejectedAt || 0 }))
+      .sort((x, y) => y.at - x.at);
+    historyCard.classList.toggle("hidden", !entries.length);
+    // Each archived version is compared with the version that followed it:
+    // the next-newer archived one, or the current content for the newest.
+    const current = item.liveVersion || item;
+    list.innerHTML = entries.map((h, i) => {
+      const next = h.outcome === "rejected" ? (item.liveVersion || item) : (entries.slice(0, i).reverse().find((e) => e.outcome === "superseded")?.content || current);
+      const label = h.outcome === "rejected"
+        ? `Proposed ${h.proposedAt ? formatTs(h.proposedAt) : ""} · rejected ${formatTs(h.rejectedAt)}`
+        : `Live ${h.liveFrom ? formatTs(h.liveFrom) : "(before versioning)"} → ${formatTs(h.liveUntil)}`;
+      const diff = h.outcome === "rejected"
+        ? diffTableHtml(next, h.content, "Kept (live)", "Rejected proposal", true)
+        : diffTableHtml(h.content, next, "This version", "Replaced by", true);
+      return `<details class="history-item">
+        <summary><span class="history-badge ${escapeHtml(h.outcome)}">${h.outcome === "rejected" ? "Rejected edit" : "Earlier version"}</span><span>${escapeHtml(label)}</span></summary>
+        <div class="diff-wrap">${diff}</div>
+      </details>`;
+    }).join("");
+  }
+}
 async function loadPartnerDeliveryData() {
   if (!currentProfile || (currentProfile.role || "").toLowerCase() === "admin") return;
   if (partnerDeliveryMessage) partnerDeliveryMessage.textContent = "";
@@ -2242,10 +2855,10 @@ async function saveModelDetails() {
   });
   if (saveBtn) { saveBtn.textContent = "Saving…"; saveBtn.disabled = true; }
   try {
-    await set(dbRef(db, `${ROOT}/submissions/${_detailsSubmissionId}/attributes`), attributes);
-    const cached = submissionsCache.find((x) => x.id === _detailsSubmissionId);
-    if (cached) cached.attributes = attributes;
-    showToast("✓ Details saved.");
+    const result = await applyContentEdit(_detailsSubmissionId,
+      { attributes: Object.keys(attributes).length ? attributes : null });
+    if (_modelPageItem?.id === _detailsSubmissionId) renderModelPageAttributes(attributes);
+    showToast(result.reapproval ? "✓ Details saved - sent for re-approval." : "✓ Details saved.");
     closeDetailsModal();
   } catch (err) {
     showToast(`Could not save: ${err.message || err}`, "error");
@@ -2320,10 +2933,11 @@ async function addQuestionToModel() {
     if (options.length < 2) { if (msgEl) msgEl.textContent = "Add at least 2 options."; return; }
   }
 
-  const questionRef = push(dbRef(db, `${ROOT}/submissions/${currentDetailSubmissionId}/questions`));
-  await set(questionRef, { type, text, options, createdAt: Date.now() });
+  const questionKey = push(dbRef(db, `${ROOT}/submissions/${currentDetailSubmissionId}/questions`)).key;
+  const result = await applyContentEdit(currentDetailSubmissionId,
+    { [`questions/${questionKey}`]: { type, text, options, createdAt: Date.now() } });
 
-  if (msgEl) msgEl.textContent = "";
+  if (msgEl) msgEl.textContent = result.reapproval ? editSavedMessage(result) : "";
   byId("questionTextInput").value = "";
 
   // Refresh questions in modal
@@ -2341,7 +2955,7 @@ async function addQuestionToModel() {
 async function deleteQuestion(questionId) {
   if (!currentDetailSubmissionId) return;
   try {
-    await set(dbRef(db, `${ROOT}/submissions/${currentDetailSubmissionId}/questions/${questionId}`), null);
+    await applyContentEdit(currentDetailSubmissionId, { [`questions/${questionId}`]: null });
     const snap = await get(dbRef(db, `${ROOT}/submissions/${currentDetailSubmissionId}/questions`));
     renderQuestions(snap.exists() ? snap.val() : {});
     const cached = submissionsCache.find((x) => x.id === currentDetailSubmissionId);
@@ -2364,7 +2978,7 @@ function targetLabel(item) {
 }
 
 function statusLabel(item) {
-  const base = item.status || "pending";
+  const base = item.status === "updated" ? "updated · needs re-approval" : (item.status || "pending");
   if (item.pushedToApp) {
     return `${base} / pushed (${toInt(item.pushedCount, 0)})`;
   }
@@ -2451,10 +3065,12 @@ function renderSubmissionRows() {
   if (currentSubmissionFilter === "approved") {
     rows = rows.filter((item) => item.status === "approved");
   } else if (currentSubmissionFilter === "pending") {
-    rows = rows.filter((item) => item.status === "pending");
+    // "Needs review" covers both first-time uploads and edits to approved ones.
+    rows = rows.filter((item) => item.status === "pending" || item.status === "updated");
   }
   if (currentCategoryFilter) {
-    rows = rows.filter((item) => item.category === currentCategoryFilter);
+    const linked = categoryLinksCache[currentCategoryFilter] || {};
+    rows = rows.filter((item) => linked[item.id]);
   }
 
   const isAdmin = normalizeRole(currentProfile?.role) === "admin";
@@ -2470,8 +3086,12 @@ function renderSubmissionRows() {
       : `<div class="row-thumbnail-placeholder"></div>`;
 
     const approved = item.status === "approved";
-    const rejected = item.status === "rejected";
+    const reviewable = item.status === "pending" || item.status === "updated";
     const pushed = !!item.pushedToApp;
+    // "When did this request come in" - for an edit awaiting re-approval
+    // that's the edit, not the original upload. Exact timestamp on hover and
+    // on the model page.
+    const requestTs = item.status === "updated" ? (item.updatedAt || item.createdAt) : item.createdAt;
 
     const tr = document.createElement("tr");
     tr.innerHTML = `
@@ -2479,9 +3099,8 @@ function renderSubmissionRows() {
         <div style="display:flex;align-items:center;gap:10px">
           ${thumbHtml}
           <div style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;flex:1">
-            <button class="model-name-link" data-analytics="true">
-              <strong>${escapeHtml(displayName)}</strong><br>
-              <span class="muted" style="font-size:12px">${escapeHtml(item.fileName || "")}</span>
+            <button class="model-name-link" data-analytics="true" title="${escapeHtml(item.fileName || "")}">
+              <strong>${escapeHtml(displayName)}</strong>
             </button>
             <button class="model-details-btn" type="button" title="Edit model details">Details</button>
           </div>
@@ -2496,12 +3115,12 @@ function renderSubmissionRows() {
           <button class="manage-questions-btn" type="button">✏ Edit</button>
         </div>
       </td>
-      <td>${formatTs(item.createdAt)}</td>
+      <td title="${escapeHtml(formatTs(requestTs))}">${escapeHtml(formatRelativeDate(requestTs))}</td>
       ${isAdmin ? `
       <td>
         <div class="row-actions">
-          <button class="secondary" data-id="${item.id}" data-action="approve" ${approved || rejected ? "disabled" : ""}>Approve</button>
-          <button class="danger" data-id="${item.id}" data-action="reject" ${approved || rejected ? "disabled" : ""}>Reject</button>
+          <button class="secondary" data-id="${item.id}" data-action="approve" data-status="${escapeHtml(item.status || "")}" ${reviewable ? "" : "disabled"}>Approve</button>
+          <button class="danger" data-id="${item.id}" data-action="reject" data-status="${escapeHtml(item.status || "")}" ${reviewable ? "" : "disabled"}>Reject</button>
           <button class="success" data-id="${item.id}" data-action="push" ${!approved || pushed ? "disabled" : ""}>${pushed ? "Pushed ✓" : "Push to App"}</button>
         </div>
       </td>` : ""}
@@ -2533,10 +3152,13 @@ async function openModelPage(item) {
   const titleEl = byId("modelPageTitle");
   const metaEl  = byId("modelPageMeta");
   if (titleEl) titleEl.textContent = title;
-  if (metaEl)  metaEl.textContent  = `Status: ${statusLabel(item)} · Uploaded ${formatTs(item.createdAt)}`;
-  const descEl = byId("modelPageDescription");
-  if (descEl) descEl.textContent = item.description || "No description provided.";
+  // Full timestamps live here - the uploads table only shows "5 hours ago".
+  const metaParts = [`Status: ${statusLabel(item)}`, `Uploaded ${formatTs(item.createdAt)}`];
+  if (item.approvedAt) metaParts.push(`Approved ${formatTs(item.approvedAt)}`);
+  if (item.status === "updated" && item.updatedAt) metaParts.push(`Edited ${formatTs(item.updatedAt)}`);
+  if (metaEl)  metaEl.textContent  = metaParts.join(" · ");
   renderModelPageAttributes(item.attributes || {});
+  renderModelPageListing(item);
 
   // Fresh add-question form on every visit, not whatever was left typed
   // in from a previous model's page.
@@ -2601,17 +3223,17 @@ async function openModelPage(item) {
 
     await renderModelPageQuestions(item, yes, no, opens, sent);
     await renderModelPageDistribution(item);
-    renderModelPageReport(item);
-
-    // Show thumbnail or placeholder
-    renderModelPageThumbnail(item.thumbnailUrl || null);
+    renderModelPageReport(item, sent);
 
     renderModelPageActions(item);
     renderModelPageCategory(item);
     renderModelPagePricingAndCta(item);
+    renderVersioningCards(item);
 
     byId("modelPageLoading")?.classList.add("hidden");
     byId("modelPageContent")?.classList.remove("hidden");
+    // After un-hiding: the preview measures the description to detect clipping.
+    renderModelPagePreview();
   } catch (err) {
     const el = byId("modelPageLoading");
     if (el) el.textContent = `Could not load: ${err.message || err}`;
@@ -2630,16 +3252,18 @@ function renderModelPageActions(item) {
   if (!card || !approveBtn || !rejectBtn || !pushBtn) return;
 
   const approved = item.status === "approved";
-  const rejected = item.status === "rejected";
+  const reviewable = item.status === "pending" || item.status === "updated";
   const pushed = !!item.pushedToApp;
 
-  [approveBtn, rejectBtn, pushBtn].forEach((btn) => { btn.dataset.id = item.id; });
+  [approveBtn, rejectBtn, pushBtn].forEach((btn) => { btn.dataset.id = item.id; btn.dataset.status = item.status || ""; });
   approveBtn.dataset.action = "approve";
   rejectBtn.dataset.action = "reject";
   pushBtn.dataset.action = "push";
 
-  approveBtn.disabled = approved || rejected;
-  rejectBtn.disabled = approved || rejected;
+  approveBtn.disabled = !reviewable;
+  rejectBtn.disabled = !reviewable;
+  approveBtn.textContent = item.status === "updated" ? "Approve changes" : "Approve";
+  rejectBtn.textContent = item.status === "updated" ? "Reject changes" : "Reject";
   pushBtn.disabled = !approved || pushed;
   pushBtn.textContent = pushed ? "Pushed ✓" : "Push to App";
 
@@ -2759,7 +3383,7 @@ function buildShareBins(maxCount) {
   return bins;
 }
 
-async function renderModelPageReport(item) {
+async function renderModelPageReport(item, sent = 0) {
   const reportCard = byId("modelPageReportCard");
   if (!item.modelKey) {
     if (reportCard) reportCard.style.display = "none";
@@ -2772,7 +3396,7 @@ async function renderModelPageReport(item) {
     getEventsForModel(item.modelKey)
   ]);
   renderRatingReport(ratings);
-  renderEngagementReport(events);
+  renderEngagementReport(events, sent);
 }
 
 function renderRatingReport(ratings) {
@@ -2816,17 +3440,40 @@ function renderRatingReport(ratings) {
   });
 }
 
-function renderEngagementReport(events) {
+/** Summary tiles above the engagement chart: all-time totals, each with how
+ * many of them came in the last 7 days so recent momentum is visible too. */
+function renderEngagementStats(events, sent) {
+  const row = byId("modelPageEngagementStatsRow");
+  if (!row) return;
+  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const count = (type) => events.filter((e) => e.type === type).length;
+  const recent = (type) => events.filter((e) => e.type === type && (e.createdAt || 0) >= weekAgo).length;
+  const recentLine = (type) => { const n = recent(type); return n ? `+${n} last 7 days` : "none last 7 days"; };
+
+  const engaged = new Set(events.filter((e) => e.uid).map((e) => e.uid));
+  const dwell = events.filter((e) => e.type === "dwell" && e.durationMs > 0);
+  const avgDwell = dwell.length ? dwell.reduce((a, e) => a + e.durationMs, 0) / dwell.length : 0;
+
+  const tiles = [
+    { value: sent || 0, label: "Users reached", sub: "sent this model" },
+    { value: engaged.size, label: "Engaged users", sub: sent ? `${Math.round((engaged.size / sent) * 100)}% of reached` : "opened, clicked or shared" },
+    { value: count("view"), label: "Total views", sub: recentLine("view") },
+    { value: count("cta_click"), label: "CTA clicks", sub: recentLine("cta_click") },
+    { value: count("share"), label: "Shares", sub: recentLine("share") },
+    { value: dwell.length ? formatDuration(avgDwell) : "—", label: "Avg. time viewing", sub: dwell.length ? `over ${dwell.length} session${dwell.length === 1 ? "" : "s"}` : "no sessions yet" }
+  ];
+  row.innerHTML = tiles.map((t) => `
+    <div class="mp-stat">
+      <span class="mp-stat-value">${escapeHtml(String(t.value))}</span>
+      <span class="mp-stat-label">${escapeHtml(t.label)}</span>
+      <span class="mp-stat-sub">${escapeHtml(t.sub)}</span>
+    </div>`).join("");
+}
+
+function renderEngagementReport(events, sent = 0) {
   const wrap = byId("modelPageEngagementChart")?.parentElement;
   const emptyMsg = byId("modelPageEngagementEmpty");
-  const avgDwellEl = byId("modelPageAvgDwell");
-
-  const dwellEvents = events.filter((e) => e.type === "dwell");
-  if (avgDwellEl) {
-    avgDwellEl.textContent = dwellEvents.length
-      ? formatDuration(dwellEvents.reduce((a, e) => a + (e.durationMs || 0), 0) / dwellEvents.length)
-      : "—";
-  }
+  renderEngagementStats(events, sent);
 
   const timedEvents = events.filter((e) => e.type === "view" || e.type === "cta_click" || e.type === "share");
   if (!timedEvents.length) {
@@ -2942,13 +3589,11 @@ async function renderModelPageQuestions(item, yes, no, opens, sent) {
     card.querySelector(".mp-del-q-btn").addEventListener("click", async () => {
       if (!currentDetailSubmissionId) return;
       try {
-        await set(dbRef(db, `${ROOT}/submissions/${currentDetailSubmissionId}/questions/${qId}`), null);
-        const updated = await get(dbRef(db, `${ROOT}/submissions/${currentDetailSubmissionId}/questions`));
-        // Refresh page questions list
+        // Responses already collected stay in users/*/answers/{qId}; the
+        // question's text stays in liveVersion/history for reference.
+        const result = await applyContentEdit(currentDetailSubmissionId, { [`questions/${qId}`]: null });
+        if (result.reapproval) showToast("Question removed - sent for re-approval.");
         await renderModelPageQuestions(item, yes, no, opens, sent);
-        // Keep the cache in sync
-        const cached = submissionsCache.find((x) => x.id === currentDetailSubmissionId);
-        if (cached) { cached.questions = updated.exists() ? updated.val() : {}; renderSubmissionRows(); }
       } catch (err) { showToast(`Delete failed: ${err.message || err}`, "error"); }
     });
 
@@ -3113,10 +3758,11 @@ async function addQuestionToModelPage() {
   }
 
   try {
-    const questionRef = push(dbRef(db, `${ROOT}/submissions/${currentDetailSubmissionId}/questions`));
-    await set(questionRef, { type, text, options, createdAt: Date.now() });
+    const questionKey = push(dbRef(db, `${ROOT}/submissions/${currentDetailSubmissionId}/questions`)).key;
+    const result = await applyContentEdit(currentDetailSubmissionId,
+      { [`questions/${questionKey}`]: { type, text, options, createdAt: Date.now() } });
 
-    if (msgEl) msgEl.textContent = "";
+    if (msgEl) msgEl.textContent = result.reapproval ? editSavedMessage(result) : "";
     const textInput = byId("modelPageQuestionTextInput");
     if (textInput) textInput.value = "";
     const mcList = byId("modelPageMcOptionsList");
@@ -3146,9 +3792,12 @@ async function renderModelPageDistribution(item) {
   const isAdmin  = normalizeRole(currentProfile?.role) === "admin";
   const modelKey = item.modelKey;
 
-  // Partners can only send if the model is approved
+  // Partners can only send if the model is approved - and an edit to an
+  // approved model pauses sending until the edit is re-approved.
   if (!isAdmin && item.status !== "approved") {
-    listEl.innerHTML = `<p class="muted">Model must be approved before it can be sent to users.</p>`;
+    listEl.innerHTML = item.status === "updated"
+      ? `<p class="reapproval-banner">⏸ Sending is paused while your latest changes await re-approval. Users who already have this model still see the approved version.</p>`
+      : `<p class="muted">Model must be approved before it can be sent to users.</p>`;
     if (actionsEl) actionsEl.style.display = "none";
     return;
   }
@@ -3342,6 +3991,54 @@ function normalizeRole(role) {
 function formatTs(ts) {
   if (!ts) return "-";
   return new Date(ts).toLocaleString();
+}
+
+/** "Just now" / "5 hours ago" / "3 days ago" for the first week, then just the
+ * date - the exact timestamp lives on the model page (and the cell's tooltip). */
+function formatRelativeDate(ts) {
+  if (!ts) return "-";
+  const diff = Math.max(0, Date.now() - ts);
+  const minute = 60 * 1000, hour = 60 * minute, day = 24 * hour;
+  const ago = (n, unit) => `${n} ${unit}${n === 1 ? "" : "s"} ago`;
+  if (diff < minute) return "Just now";
+  if (diff < hour) return ago(Math.floor(diff / minute), "minute");
+  if (diff < day) return ago(Math.floor(diff / hour), "hour");
+  if (diff < 7 * day) return ago(Math.floor(diff / day), "day");
+  return new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+// ─── Currency ────────────────────────────────────────────────────────────────
+
+function populateCurrencySelect(select) {
+  if (!select) return;
+  select.innerHTML = CURRENCIES
+    .map(([code, name]) => `<option value="${code}">${code} — ${escapeHtml(name)}</option>`).join("");
+  select.value = DEFAULT_CURRENCY;
+}
+
+/** Numeric part of a price field, or null. Accepts legacy free-text values
+ * like "$1,200" from before the currency picker existed. */
+function parseAmount(value) {
+  const cleaned = String(value ?? "").replace(/[^0-9.\-]/g, "");
+  if (!/\d/.test(cleaned)) return null;
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** "GH₵2,000" / "$899.99" / "¥1,200". Values saved before currencies existed
+ * (no currency stored) are shown exactly as the partner typed them. */
+function formatMoney(value, currency) {
+  if (value === null || value === undefined || String(value).trim() === "") return "";
+  const n = parseAmount(value);
+  if (n === null || !currency) return String(value).trim();
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency", currency, currencyDisplay: "narrowSymbol",
+      minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2
+    }).format(n);
+  } catch (_) {
+    return `${currency} ${n.toLocaleString("en-US")}`;
+  }
 }
 
 function byId(id) {

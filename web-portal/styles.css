@@ -250,6 +250,7 @@ tr:last-child td { border-bottom: none; }
 .status-pending { background: #fff7ed; color: var(--warn); }
 .status-approved { background: #ecfdf3; color: var(--ok); }
 .status-rejected { background: #fef2f2; color: var(--bad); }
+.status-updated { background: #eef2ff; color: #4338ca; }
 
 .row-actions { display: flex; gap: 6px; }
 .row-actions button { padding: 6px 10px; font-size: 12px; }
@@ -1113,3 +1114,128 @@ button[disabled] {
   padding: 2px 7px;
   flex-shrink: 0;
 }
+
+/* ─── Model page: listing / pricing form ───────────────────────────────────── */
+.field-hint { font-size: 12px; margin: 4px 0 10px; }
+.pricing-grid {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.2fr) 1fr 1fr;
+  gap: 12px;
+}
+.pricing-grid input, .pricing-grid select { width: 100%; }
+@media (max-width: 640px) { .pricing-grid { grid-template-columns: 1fr; } }
+.deal-options { display: flex; gap: 20px; flex-wrap: wrap; margin: 4px 0 6px; }
+.deal-options label { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
+
+.category-checks { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.category-checks label {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--line); border-radius: 999px;
+  padding: 5px 12px; font-size: 13px; cursor: pointer;
+}
+.category-checks label:has(input:checked) { border-color: var(--brand); background: #ecf8f3; }
+
+/* Stat tiles: optional secondary line ("+3 last 7 days") */
+.mp-stat-sub { display: block; font-size: 11px; color: var(--soft); margin-top: 2px; font-variant-numeric: tabular-nums; }
+.mp-stat-value { font-variant-numeric: tabular-nums; }
+
+/* ─── Re-approval diff + version history ──────────────────────────────────── */
+.mp-changes-card { border-color: #c7d2fe; background: #fbfbff; }
+.reapproval-banner {
+  border: 1px solid #c7d2fe; background: #eef2ff; color: #3730a3;
+  border-radius: 12px; padding: 12px 16px; margin: 0 0 16px; font-size: 14px;
+}
+.diff-wrap { overflow-x: auto; }
+.diff-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.diff-table th, .diff-table td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.diff-table th { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--soft); }
+.diff-table td:first-child { font-weight: 700; white-space: nowrap; width: 110px; }
+.diff-table tr.diff-changed td { background: #fffbeb; }
+.diff-table tr.diff-changed td.diff-old { background: #fef2f2; }
+.diff-table tr.diff-changed td.diff-new { background: #ecfdf3; }
+.diff-table tr.diff-same td { color: var(--soft); }
+.diff-q { margin: 0 0 6px; }
+.diff-q-added { color: var(--ok); }
+.diff-q-removed { color: var(--bad); text-decoration: line-through; }
+.diff-tag { font-size: 10px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; margin-right: 6px; }
+.diff-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+
+.history-item { border: 1px solid var(--line); border-radius: 10px; margin-bottom: 8px; background: #fff; }
+.history-item summary { cursor: pointer; padding: 10px 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+.history-item[open] summary { border-bottom: 1px solid var(--line); }
+.history-item .diff-wrap { padding: 8px 12px 12px; }
+.history-badge { font-size: 10px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; border-radius: 999px; padding: 2px 8px; }
+.history-badge.superseded { background: #f1f5f9; color: #475569; }
+.history-badge.rejected { background: #fef2f2; color: var(--bad); }
+
+/* ─── Phone preview (mirrors the app's Product Details screen) ───────────────
+   All sizes are the app's own 1080x2340 reference-resolution pixels scaled by
+   --s, so text wraps and clips the way it will on a phone. */
+.phone {
+  --s: 0.24;
+  width: calc(1080px * var(--s) + 16px);
+  margin: 0 auto 8px;
+  border: 8px solid #111827;
+  border-radius: 34px;
+  background: #111827;
+  box-shadow: 0 12px 30px rgba(16, 42, 35, 0.18);
+}
+.phone-screen {
+  position: relative;
+  height: calc(2340px * var(--s));
+  border-radius: 26px;
+  overflow: hidden;
+  background: #f7f8fa;
+  font-family: Inter, Manrope, system-ui, sans-serif;
+  color: #1f2430;
+}
+.phone-hero {
+  position: absolute; left: 0; right: 0; top: 0;
+  height: calc(1180px * var(--s));
+  display: flex; align-items: center; justify-content: center;
+  background: #f7f8fa;
+}
+.phone-hero img { width: 82%; height: 82%; object-fit: contain; }
+.phone-hero-empty { font-size: 11px; letter-spacing: 0.12em; color: #9aa0aa; font-weight: 700; }
+.phone-back {
+  position: absolute; top: calc(50px * var(--s)); left: calc(36px * var(--s));
+  width: calc(110px * var(--s)); height: calc(110px * var(--s));
+  border-radius: 50%; background: #fff; display: grid; place-items: center;
+  font-size: calc(44px * var(--s)); box-shadow: 0 1px 3px rgba(0,0,0,.12);
+}
+.phone-sheet {
+  position: absolute; left: 0; right: 0; top: calc(1100px * var(--s)); bottom: 0;
+  background: #fff; border-radius: calc(60px * var(--s)) calc(60px * var(--s)) 0 0;
+  padding: calc(60px * var(--s)) calc(72px * var(--s)) 0;
+  display: flex; flex-direction: column; gap: calc(20px * var(--s));
+}
+.phone-name {
+  font-size: calc(72px * var(--s)); font-weight: 800; line-height: 1.15;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.phone-desc {
+  font-size: calc(32px * var(--s)); line-height: 1.25; color: #9aa0aa;
+  height: calc(120px * var(--s)); overflow: hidden;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+}
+.phone-desc.is-overflowing { box-shadow: inset 0 -2px 0 #f59e0b; }
+.phone-cards { display: grid; grid-template-columns: 1fr 1fr; gap: calc(48px * var(--s)); margin-top: calc(20px * var(--s)); }
+.phone-cards:empty { display: none; }
+.phone-info { background: #eff1f5; border-radius: calc(36px * var(--s)); padding: calc(24px * var(--s)) calc(28px * var(--s)); min-height: calc(150px * var(--s)); }
+.phone-info small { display: block; font-size: calc(28px * var(--s)); color: #9aa0aa; }
+.phone-info strong { display: block; font-size: calc(44px * var(--s)); font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.phone-btn {
+  border-radius: 999px; height: calc(130px * var(--s));
+  display: grid; place-items: center; font-weight: 700; font-size: calc(40px * var(--s));
+}
+.phone-ar { margin-top: auto; background: #3b82f6; color: #fff; }
+.phone-row { display: flex; gap: calc(24px * var(--s)); margin-bottom: calc(110px * var(--s)); }
+.phone-row .phone-btn { flex: 1; }
+.phone-save { background: #22c55e; color: #fff; }
+.phone-cta { background: #d9a514; color: #1f2430; }
+.phone-share { background: #fff; color: #1f2430; }
+.phone-note { font-size: 12px; text-align: center; margin: 0 0 4px; color: var(--warn); }
+
+.upload-preview { margin: 10px 0 4px; border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; }
+.upload-preview summary { cursor: pointer; font-size: 13px; font-weight: 700; color: var(--soft); }
+.upload-preview .phone { --s: 0.2; margin-top: 10px; }

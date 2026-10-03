@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./styles.css?v=7" />
+  <link rel="stylesheet" href="./styles.css?v=8" />
   <!-- model-viewer for GLB thumbnail generation -->
   <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
 </head>
@@ -261,13 +261,14 @@
               <h3 class="mp-section-title">Performance Report</h3>
 
               <div id="modelPageRatingStatsRow" class="mp-stats-row" style="margin-bottom:16px"></div>
+              <h4 class="mp-section-title">Rating Histogram</h4>
               <div id="modelPageRatingChartWrap" class="report-chart-wrap report-chart-wrap-sm">
                 <canvas id="modelPageRatingChart"></canvas>
               </div>
               <p id="modelPageRatingEmpty" class="muted hidden">No ratings yet.</p>
 
               <h4 class="mp-section-title" style="margin-top:24px">Engagement Over Time</h4>
-              <p class="muted" style="margin:0 0 4px">Avg. time viewing this product: <strong id="modelPageAvgDwell">—</strong></p>
+              <div id="modelPageEngagementStatsRow" class="mp-stats-row" style="margin-bottom:16px"></div>
               <div class="report-chart-wrap">
                 <canvas id="modelPageEngagementChart"></canvas>
               </div>
@@ -280,30 +281,49 @@
               <!-- Left: description + question responses -->
               <div class="mp-col-left">
 
+                <!-- Re-approval: shown while a partner's edits to an approved model await review -->
+                <div class="mp-card mp-changes-card hidden" id="modelPageChangesCard">
+                  <h3 class="mp-section-title" id="modelPageChangesTitle">Changes awaiting approval</h3>
+                  <p class="muted" id="modelPageChangesIntro" style="margin:0 0 12px"></p>
+                  <div id="modelPageChangesDiff" class="diff-wrap"></div>
+                </div>
+
                 <div class="mp-card">
-                  <h3 class="mp-section-title">Description</h3>
-                  <p id="modelPageDescription" class="muted"></p>
+                  <h3 class="mp-section-title">Listing</h3>
+                  <label class="field-label" for="modelPageNameInput">Name</label>
+                  <input id="modelPageNameInput" maxlength="60" />
+                  <label class="field-label" for="modelPageDescriptionInput">Description</label>
+                  <textarea id="modelPageDescriptionInput" rows="3" maxlength="400"></textarea>
+                  <p class="muted field-hint"><span id="modelPageDescriptionCount">0</span>/400 · the preview on the right shows how much fits on the phone.</p>
+                  <button id="modelPageSaveListingButton" class="secondary" type="button">Save Listing</button>
+                  <p id="modelPageListingMessage" class="muted"></p>
                 </div>
 
                 <div class="mp-card admin-only">
-                  <h3 class="mp-section-title">Category</h3>
-                  <div class="row-actions">
-                    <select id="modelPageCategorySelect" style="flex:1">
-                      <option value="">Uncategorized</option>
-                    </select>
-                    <button id="modelPageSaveCategoryButton" class="secondary" type="button">Save</button>
-                  </div>
+                  <h3 class="mp-section-title">Categories</h3>
+                  <div id="modelPageCategoryList" class="category-checks"></div>
+                  <button id="modelPageSaveCategoryButton" class="secondary" type="button">Save Categories</button>
                   <p id="modelPageCategoryMessage" class="muted"></p>
                 </div>
 
                 <div class="mp-card">
                   <h3 class="mp-section-title">Pricing &amp; Deal</h3>
-                  <label class="field-label">Brand Value</label>
-                  <input id="modelPageBrandValueInput" placeholder="e.g. $1,200" />
-                  <label class="field-label">Price</label>
-                  <input id="modelPagePriceInput" placeholder="e.g. $900.00" />
+                  <div class="pricing-grid">
+                    <div>
+                      <label class="field-label" for="modelPageCurrencySelect">Currency</label>
+                      <select id="modelPageCurrencySelect"></select>
+                    </div>
+                    <div>
+                      <label class="field-label" for="modelPageBrandValueInput">Brand value</label>
+                      <input id="modelPageBrandValueInput" inputmode="decimal" placeholder="e.g. 1200" />
+                    </div>
+                    <div>
+                      <label class="field-label" for="modelPagePriceInput">Price</label>
+                      <input id="modelPagePriceInput" inputmode="decimal" placeholder="e.g. 900" />
+                    </div>
+                  </div>
                   <label class="field-label">Deal type</label>
-                  <div class="row-actions" style="gap:16px;flex-wrap:wrap">
+                  <div class="deal-options">
                     <label><input type="radio" name="modelPageDealType" value="none" checked /> None</label>
                     <label><input type="radio" name="modelPageDealType" value="discount" /> Discount</label>
                     <label><input type="radio" name="modelPageDealType" value="bogo" /> BOGO</label>
@@ -362,15 +382,21 @@
                   </div>
                 </div>
 
+                <div class="mp-card hidden" id="modelPageHistoryCard">
+                  <h3 class="mp-section-title">Version history</h3>
+                  <p class="muted" style="margin:0 0 10px">Earlier versions are kept, not overwritten - responses collected under them stay attached to their questions.</p>
+                  <div id="modelPageHistoryList"></div>
+                </div>
 
               </div>
 
               <!-- Right: model preview + distribution -->
               <div class="mp-col-right">
 
-                <div class="mp-card mp-preview-card">
-                  <img id="modelPageThumbnail" class="mp-thumbnail hidden" alt="Model preview" />
-                  <div class="mp-preview-placeholder" id="modelPagePreviewPlaceholder">MODEL</div>
+                <div class="mp-card mp-phone-card">
+                  <h3 class="mp-section-title">App preview</h3>
+                  <div id="modelPagePhonePreview"></div>
+                  <p class="muted field-hint" style="text-align:center">Live preview of the product screen. Updates as you type; saved changes reach the app once approved.</p>
                 </div>
 
                 <div class="mp-card admin-only" id="modelPageActionsCard">
@@ -423,7 +449,11 @@
           <label class="field-label">Model name</label>
           <input id="displayNameInput" placeholder="e.g. Air Force 1 Collab" />
           <label class="field-label">Description</label>
-          <textarea id="modelDescriptionInput" rows="3" placeholder="e.g. Limited edition collab with bold colourways and premium materials..."></textarea>
+          <textarea id="modelDescriptionInput" rows="3" maxlength="400" placeholder="e.g. Limited edition collab with bold colourways and premium materials..."></textarea>
+          <details class="upload-preview" open>
+            <summary>Preview in the app</summary>
+            <div id="uploadPhonePreview"></div>
+          </details>
 
           <!-- Admin-only targeting -->
           <div class="admin-only">
@@ -560,6 +590,6 @@
   <script src="./emailjs-config.js?v=1"></script>
   <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
-  <script type="module" src="./app.js?v=24"></script>
+  <script type="module" src="./app.js?v=25"></script>
 </body>
 </html>
