@@ -137,8 +137,6 @@ const FIELD_LABELS = {
 
 const totalUploads = byId("totalUploads");
 const approvedUploads = byId("approvedUploads");
-const openCount = byId("openCount");
-const saveCount = byId("saveCount");
 const cardTotalUploads = byId("cardTotalUploads");
 const cardApprovedUploads = byId("cardApprovedUploads");
 const filterAllSubmissions = byId("filterAllSubmissions");
@@ -402,10 +400,15 @@ async function loadPortalNotifications() {
   if (!currentUser) return;
   try {
     const snap = await get(dbRef(db, `${ROOT}/portal_notifications/${currentUser.uid}`));
-    const items = snap.exists()
-      ? Object.entries(snap.val()).sort((a, b) => (b[1].createdAt || 0) - (a[1].createdAt || 0)).slice(0, 20)
+    // Every unread item is listed (never cut off by the cap), plus the most
+    // recent read ones - so the badge count always equals the dots shown.
+    const all = snap.exists()
+      ? Object.entries(snap.val()).sort((a, b) => (b[1].createdAt || 0) - (a[1].createdAt || 0))
       : [];
-    const unread = items.filter(([, n]) => !n.read).length;
+    const unreadItems = all.filter(([, n]) => !n.read);
+    const readItems = all.filter(([, n]) => n.read).slice(0, Math.max(0, 20 - unreadItems.length));
+    const items = [...unreadItems, ...readItems].sort((a, b) => (b[1].createdAt || 0) - (a[1].createdAt || 0));
+    const unread = unreadItems.length;
 
     if (badge) {
       badge.textContent = unread > 99 ? "99+" : String(unread);
@@ -426,7 +429,7 @@ async function loadPortalNotifications() {
       // All notifications link to the relevant screen
       const targetScreen = n.screen || "uploads";
       div.innerHTML = `
-        <span class="notif-dot notif-dot-${n.type || "info"}"></span>
+        <span class="notif-dot ${n.read ? "notif-dot-read" : "notif-dot-unread"}" ${n.read ? "" : 'title="Unread"'}></span>
         <div class="notif-body">
           <p>${escapeHtml(n.message)}</p>
           <div class="notif-footer">
@@ -438,13 +441,19 @@ async function loadPortalNotifications() {
 
       // Click anywhere on the item: mark read + navigate
       div.addEventListener("click", async () => {
-        await set(dbRef(db, `${ROOT}/portal_notifications/${currentUser.uid}/${id}/read`), true);
-        div.classList.remove("notif-unread");
-        const cur = parseInt(badge?.textContent) || 0;
-        if (badge && cur > 0) {
-          const next = cur - 1;
-          badge.textContent = String(next);
-          badge.classList.toggle("hidden", next === 0);
+        if (!n.read) {
+          await set(dbRef(db, `${ROOT}/portal_notifications/${currentUser.uid}/${id}/read`), true);
+          n.read = true;
+          div.classList.remove("notif-unread");
+          const dot = div.querySelector(".notif-dot");
+          dot?.classList.replace("notif-dot-unread", "notif-dot-read");
+          dot?.removeAttribute("title");
+          const cur = parseInt(badge?.textContent) || 0;
+          if (badge && cur > 0) {
+            const next = cur - 1;
+            badge.textContent = String(next);
+            badge.classList.toggle("hidden", next === 0);
+          }
         }
         _notifDropdownOpen = false;
         byId("notifDropdown")?.classList.add("hidden");
@@ -1383,35 +1392,72 @@ async function pushSubmissionToApp(submissionId, options = {}) {
 
 async function loadAnalytics() {
   if (!currentProfile || !currentUser) return;
-  try {
-    const isAdmin = normalizeRole(currentProfile.role) === "admin";
-    const businessId = currentProfile.businessId || currentUser.uid;
+  // Admin has no Report screen (Manage Partner covers this per-partner instead).
+  if (normalizeRole(currentProfile.role) === "admin") return;
+  await populateReportModelSelect();
+  await renderPartnerReport();
+}
 
-    const all = await getAllSubmissions();
-    const relevant = isAdmin ? all : all.filter((x) => x.businessId === businessId);
-    const modelKeys = relevant.map((x) => x.modelKey).filter(Boolean);
+// ─── Partner Report (all models or one) ──────────────────────────────────────
 
-    let opens = 0;
-    let saves = 0;
-
-    await Promise.all(
-      modelKeys.map(async (key) => {
-        const snap = await get(dbRef(db, `${ROOT}/models/${key}/data`));
-        if (!snap.exists()) return;
-        const d = snap.val();
-        opens += toInt(d.yes, 0) + toInt(d.no, 0);
-        saves += toInt(d.saved, 0);
-      })
-    );
-
-    openCount.textContent = String(opens);
-    saveCount.textContent = String(saves);
-    // Admin has no Report screen (Manage Partner covers this per-partner instead).
-    if (!isAdmin) renderShareActivityReport(currentUser.uid, MY_SHARE_REPORT_IDS, false);
-  } catch {
-    openCount.textContent = "0";
-    saveCount.textContent = "0";
+/** The partner's models that have reached the app (have a modelKey), newest
+ * first, for the Report screen's "Showing" selector. Keeps the current pick
+ * if it still exists. */
+async function populateReportModelSelect() {
+  const select = byId("reportModelSelect");
+  if (!select) return;
+  const businessId = currentProfile.businessId || currentUser.uid;
+  const mine = (await getAllSubmissions())
+    .filter((s) => s.businessId === businessId && s.modelKey)
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  const previous = select.value;
+  select.innerHTML = '<option value="">All models</option>' + mine
+    .map((s) => `<option value="${escapeHtml(s.modelKey)}">${escapeHtml(s.displayName || s.fileName || s.modelKey)}</option>`).join("");
+  select.value = mine.some((s) => s.modelKey === previous) ? previous : "";
+  if (!select.dataset.bound) {
+    select.dataset.bound = "1";
+    select.addEventListener("change", renderPartnerReport);
   }
+}
+
+/** Engagement totals + timeline and the sharing report, scoped to the model
+ * picked in the selector (or every model the partner has). */
+async function renderPartnerReport() {
+  const select = byId("reportModelSelect");
+  const picked = select?.value || "";
+  const businessId = currentProfile.businessId || currentUser.uid;
+  const scopeText = byId("reportScopeText");
+  if (scopeText) {
+    scopeText.textContent = picked
+      ? `Engagement and sharing performance for ${select.options[select.selectedIndex].text}.`
+      : "Engagement and sharing performance across all your products.";
+  }
+
+  try {
+    const [submissions, allEvents] = await Promise.all([getAllSubmissions(), getAllEvents()]);
+    const keys = picked
+      ? [picked]
+      : [...new Set(submissions.filter((s) => s.businessId === businessId && s.modelKey).map((s) => s.modelKey))];
+    const keySet = new Set(keys);
+
+    let sent = 0, opens = 0, saves = 0;
+    await Promise.all(keys.map(async (key) => {
+      const snap = await get(dbRef(db, `${ROOT}/models/${key}/data`));
+      if (!snap.exists()) return;
+      const d = snap.val();
+      sent += toInt(d.sent, 0);
+      opens += toInt(d.opens, 0);
+      saves += toInt(d.saved, 0);
+    }));
+
+    const events = allEvents.filter((e) => keySet.has(e.modelKey));
+    renderEngagementStats(events, sent, { rowId: "reportEngagementStatsRow", opens, saves });
+    renderEngagementTimeline(events, "reportEngagementChart", "reportEngagementEmpty");
+  } catch (err) {
+    const row = byId("reportEngagementStatsRow");
+    if (row) row.innerHTML = `<p class="muted">Could not load engagement: ${escapeHtml(err.message || String(err))}</p>`;
+  }
+  renderShareActivityReport(currentUser.uid, MY_SHARE_REPORT_IDS, false, picked || null);
 }
 
 async function loadPublishedModels() {
@@ -1656,7 +1702,7 @@ const MY_SHARE_REPORT_IDS = {
   timelineCanvas: "reportShareTimelineChart", histCanvas: "reportShareHistogramChart", binUsersList: null
 };
 
-async function renderShareActivityReport(targetUid, ids, allowDrilldown) {
+async function renderShareActivityReport(targetUid, ids, allowDrilldown, onlyModelKey = null) {
   const emptyMsg = byId(ids.empty);
   const body = byId(ids.body);
   if (!targetUid) {
@@ -1677,6 +1723,12 @@ async function renderShareActivityReport(targetUid, ids, allowDrilldown) {
     const modelKeys = new Set(
       submissionsAll.filter((s) => s.businessId === businessId).map((s) => s.modelKey).filter(Boolean)
     );
+    // Narrowed to one model by the Report screen's selector.
+    if (onlyModelKey) {
+      const keep = modelKeys.has(onlyModelKey);
+      modelKeys.clear();
+      if (keep) modelKeys.add(onlyModelKey);
+    }
 
     const shareEvents = allEvents.filter((e) => e.type === "share" && modelKeys.has(e.modelKey));
 
@@ -3442,8 +3494,8 @@ function renderRatingReport(ratings) {
 
 /** Summary tiles above the engagement chart: all-time totals, each with how
  * many of them came in the last 7 days so recent momentum is visible too. */
-function renderEngagementStats(events, sent) {
-  const row = byId("modelPageEngagementStatsRow");
+function renderEngagementStats(events, sent, { rowId = "modelPageEngagementStatsRow", opens = null, saves = null } = {}) {
+  const row = byId(rowId);
   if (!row) return;
   const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
   const count = (type) => events.filter((e) => e.type === type).length;
@@ -3457,6 +3509,8 @@ function renderEngagementStats(events, sent) {
   const tiles = [
     { value: sent || 0, label: "Users reached", sub: "sent this model" },
     { value: engaged.size, label: "Engaged users", sub: sent ? `${Math.round((engaged.size / sent) * 100)}% of reached` : "opened, clicked or shared" },
+    ...(opens === null ? [] : [{ value: opens, label: "Opens", sub: "packages opened" }]),
+    ...(saves === null ? [] : [{ value: saves, label: "Saves", sub: "added to collections" }]),
     { value: count("view"), label: "Total views", sub: recentLine("view") },
     { value: count("cta_click"), label: "CTA clicks", sub: recentLine("cta_click") },
     { value: count("share"), label: "Shares", sub: recentLine("share") },
@@ -3471,9 +3525,15 @@ function renderEngagementStats(events, sent) {
 }
 
 function renderEngagementReport(events, sent = 0) {
-  const wrap = byId("modelPageEngagementChart")?.parentElement;
-  const emptyMsg = byId("modelPageEngagementEmpty");
   renderEngagementStats(events, sent);
+  renderEngagementTimeline(events, "modelPageEngagementChart", "modelPageEngagementEmpty");
+}
+
+/** Daily Views / CTA clicks / Shares lines - the model page and the partner
+ * Report both use it. */
+function renderEngagementTimeline(events, canvasId, emptyId) {
+  const wrap = byId(canvasId)?.parentElement;
+  const emptyMsg = byId(emptyId);
 
   const timedEvents = events.filter((e) => e.type === "view" || e.type === "cta_click" || e.type === "share");
   if (!timedEvents.length) {
@@ -3485,7 +3545,7 @@ function renderEngagementReport(events, sent = 0) {
   if (emptyMsg) emptyMsg.classList.add("hidden");
 
   const { labels, series } = bucketEventsByDay(timedEvents, ["view", "cta_click", "share"]);
-  renderChart("modelPageEngagementChart", {
+  renderChart(canvasId, {
     type: "line",
     data: {
       labels,

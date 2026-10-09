@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./styles.css?v=8" />
+  <link rel="stylesheet" href="./styles.css?v=9" />
   <!-- model-viewer for GLB thumbnail generation -->
   <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
 </head>
@@ -88,15 +88,25 @@
         </section>
 
         <section id="report" class="screen partner-only">
-          <h3 style="margin:0 0 4px">Your Report</h3>
-          <p class="muted" style="margin:0 0 16px">Engagement and sharing performance across all your products.</p>
+          <div class="report-header">
+            <div>
+              <h3 style="margin:0 0 4px">Your Report</h3>
+              <p class="muted" id="reportScopeText" style="margin:0">Engagement and sharing performance across all your products.</p>
+            </div>
+            <label class="report-scope">
+              <span class="field-label" style="margin:0">Showing</span>
+              <select id="reportModelSelect"><option value="">All models</option></select>
+            </label>
+          </div>
 
           <div class="mp-card">
             <h3 class="mp-section-title">Engagement</h3>
-            <div class="mp-stats-row">
-              <div class="mp-stat"><span class="mp-stat-value" id="openCount">0</span><span class="mp-stat-label">Opens</span></div>
-              <div class="mp-stat"><span class="mp-stat-value" id="saveCount">0</span><span class="mp-stat-label">Saves</span></div>
+            <div id="reportEngagementStatsRow" class="mp-stats-row"></div>
+            <h4 class="mp-section-title" style="margin-top:8px">Engagement Over Time</h4>
+            <div class="report-chart-wrap" id="reportEngagementChartWrap">
+              <canvas id="reportEngagementChart"></canvas>
             </div>
+            <p id="reportEngagementEmpty" class="muted hidden">No activity recorded yet.</p>
           </div>
 
           <div class="mp-card" id="reportShareReportCard" style="margin-top:16px">
@@ -590,6 +600,6 @@
   <script src="./emailjs-config.js?v=1"></script>
   <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
-  <script type="module" src="./app.js?v=25"></script>
+  <script type="module" src="./app.js?v=26"></script>
 </body>
 </html>

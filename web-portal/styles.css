@@ -824,7 +824,7 @@ button[disabled] {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: var(--bad);
+  background: var(--brand); /* green, matching the unread dots */
   color: #fff;
   border-radius: 999px;
   font-size: 11px;
@@ -835,6 +835,10 @@ button[disabled] {
   margin-left: 6px;
   vertical-align: middle;
 }
+
+/* .notif-badge sets display, which beat the generic .hidden rule - the badge
+   showed "0" instead of disappearing. */
+.notif-badge.hidden { display: none; }
 
 .notif-list { display: grid; gap: 8px; }
 
@@ -865,11 +869,14 @@ button[disabled] {
   margin-top: 4px;
 }
 
-.notif-dot-info { background: var(--brand); }
-.notif-dot-success { background: var(--ok); }
-.notif-dot-error { background: var(--bad); }
+/* One green dot per unread item - the badge number always equals the dots.
+   Read items keep the dot's space (so text stays aligned) but not the dot. */
+.notif-dot-unread { background: var(--brand); }
+.notif-dot-read { background: transparent; }
 
 .notif-body p { margin: 0 0 4px; font-size: 14px; font-weight: 600; }
+.notif-item:not(.notif-unread) { background: #fff; }
+.notif-item:not(.notif-unread) .notif-body p { font-weight: 500; color: var(--soft); }
 
 /* ─── Upload modal two-step slide animation ──────────────────────────── */
 
@@ -1239,3 +1246,8 @@ button[disabled] {
 .upload-preview { margin: 10px 0 4px; border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; }
 .upload-preview summary { cursor: pointer; font-size: 13px; font-weight: 700; color: var(--soft); }
 .upload-preview .phone { --s: 0.2; margin-top: 10px; }
+
+/* ─── Partner Report: scope selector ──────────────────────────────────────── */
+.report-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+.report-scope { display: flex; align-items: center; gap: 10px; }
+.report-scope select { min-width: 220px; margin: 0; }
